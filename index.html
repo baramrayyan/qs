@@ -639,30 +639,30 @@
                     </p>
                   </button>
                   {questionCount > 0 && (
-                    <div className="p-6 pt-0">
-                      <div className="flex justify-between items-center text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                        <span>Progress</span>
-                        <div className="flex items-center">
-                          <span>{savedCount} / {questionCount}</span>
-                          {savedCount > 0 && (
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); onDeleteProgress(test.id); }}
-                              className="ml-2 p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
-                              title="Delete progress"
-                            >
-                              <IconTrash className="h-4 w-4" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
-                        <div 
-                          className="bg-indigo-600 h-2 rounded-full" 
-                          style={{ width: `${progressPercent}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  )}
+                  //   <div className="p-6 pt-0">
+                  //     <div className="flex justify-between items-center text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  //       <span>Progress</span>
+                  //       <div className="flex items-center">
+                  //         <span>{savedCount} / {questionCount}</span>
+                  //         {savedCount > 0 && (
+                  //           <button 
+                  //             onClick={(e) => { e.stopPropagation(); onDeleteProgress(test.id); }}
+                  //             className="ml-2 p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+                  //             title="Delete progress"
+                  //           >
+                  //             <IconTrash className="h-4 w-4" />
+                  //           </button>
+                  //         )}
+                  //       </div>
+                  //     </div>
+                  //     <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
+                  //       <div 
+                  //         className="bg-indigo-600 h-2 rounded-full" 
+                  //         style={{ width: `${progressPercent}%` }}
+                  //       ></div>
+                  //     </div>
+                  //   </div>
+                  // )}
                 </div>
               );
             })}
@@ -2045,7 +2045,7 @@
 
       return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col dark:bg-gray-800">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col dark:bg-gray-800 overflow-y-auto">
             <form onSubmit={handleSubmit}>
               <div className="p-6 overflow-y-auto">
                 <div className="flex items-center justify-between mb-4">
@@ -2144,7 +2144,7 @@
       
       return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col dark:bg-gray-800">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col dark:bg-gray-800 overflow-y-auto">
             <div className="p-6 flex items-center justify-between border-b dark:border-gray-700">
               <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Export Test to JSON</h3>
               <button type="button" onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 rounded-full dark:text-gray-400 dark:hover:text-gray-200" aria-label="Close"><IconX className="h-6 w-6" /></button>
@@ -2174,7 +2174,7 @@
       
       return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col dark:bg-gray-800">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col dark:bg-gray-800 overflow-y-auto">
             <div className="p-6 flex items-center justify-between border-b dark:border-gray-700">
               <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Import Questions from JSON</h3>
               <button type="button" onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 rounded-full dark:text-gray-400 dark:hover:text-gray-200" aria-label="Close"><IconX className="h-6 w-6" /></button>
