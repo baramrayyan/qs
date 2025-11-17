@@ -48,6 +48,12 @@
       background-color: #6366F1; /* indigo-500 */
       top: -1px;
     }
+    
+    /* Prevent page scroll during touch-drag */
+    .dragging-touch {
+      overscroll-behavior: none;
+      touch-action: none;
+    }
   </style>
 </head>
 <body class="bg-gray-100">
@@ -92,6 +98,7 @@
     const IconLoader = ({ className }) => ( <svg className={`animate-spin ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> );
     const IconCheck = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> );
     const IconChevronLeft = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg> );
+    const IconChevronRight = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg> );
     const IconRepeat = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.6A9 9 0 0 1 12 3a9 9 0 0 1 9 9.4"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.4A9 9 0 0 1 12 21a9 9 0 0 1-9-9.4"/></svg> );
     const IconEye = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg> );
     const IconMoon = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg> );
@@ -121,6 +128,60 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
     setLogLevel('Debug');
+    
+    // --- MainMenuSidebar ---
+    function MainMenuSidebar({ isOpen, onClose, view, setView, isAdminAuth, toggleTheme, theme }) {
+      return (
+        <>
+          {/* Overlay */}
+          <div 
+            className={`fixed inset-0 bg-black/50 z-40 transition-opacity md:hidden ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+            onClick={onClose}
+          ></div>
+          {/* Sidebar */}
+          <div className={`fixed top-0 right-0 h-full w-72 bg-white dark:bg-gray-800 shadow-xl z-50
+                           transition-transform transform ${isOpen ? 'translate-x-0' : 'translate-x-full'}
+                           md:hidden`}>
+            <div className="flex justify-between items-center p-4 border-b dark:border-gray-700">
+              <h2 className="text-xl font-bold text-indigo-600">Menu</h2>
+              <button onClick={onClose} className="p-2 text-gray-500 dark:text-gray-400">
+                <IconX className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              <button
+                onClick={() => { setView('student'); onClose(); }}
+                className={`w-full text-left px-3 py-2 rounded-md text-lg font-medium ${
+                  view === 'student'
+                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
+                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                Student
+              </button>
+              <button
+                onClick={() => { setView(isAdminAuth ? 'admin' : 'admin_login'); onClose(); }}
+                className={`w-full text-left px-3 py-2 rounded-md text-lg font-medium ${
+                  view === 'admin' || view === 'admin_login'
+                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
+                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                Admin
+              </button>
+              <button 
+                onClick={toggleTheme} 
+                className="w-full text-left px-3 py-2 rounded-md text-lg font-medium flex items-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                aria-label="Toggle theme"
+              >
+                {theme === 'light' ? <IconMoon className="h-5 w-5 mr-3" /> : <IconSun className="h-5 w-5 mr-3" />}
+                <span>{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>
+              </button>
+            </div>
+          </div>
+        </>
+      );
+    }
 
     // --- Main App Component (Router) ---
     function App() {
@@ -129,6 +190,7 @@
       const [view, setView] = useState('student'); // 'student', 'admin', 'admin_login'
       const [isAdminAuth, setIsAdminAuth] = useState(false);
       const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+      const [isMainMenuOpen, setIsMainMenuOpen] = useState(false);
       
       // Firestore paths
       const dataBasePath = useMemo(() => `artifacts/${appId}/public/data`, [appId]);
@@ -188,7 +250,8 @@
                 <div className="flex items-center">
                   <h1 className="text-2xl font-bold text-indigo-600">Qs</h1>
                 </div>
-                <div className="flex items-center space-x-2">
+                {/* Desktop Menu */}
+                <div className="hidden md:flex items-center space-x-2">
                   <button
                     onClick={() => setView('student')}
                     className={`px-3 py-2 rounded-md text-sm font-medium ${
@@ -217,9 +280,30 @@
                     {theme === 'light' ? <IconMoon className="h-5 w-5" /> : <IconSun className="h-5 w-5" />}
                   </button>
                 </div>
+                {/* Mobile Menu Button */}
+                <div className="md:hidden flex items-center">
+                  <button 
+                    onClick={() => setIsMainMenuOpen(true)}
+                    className="p-2 rounded-full text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                    aria-label="Open main menu"
+                  >
+                    <IconMenu className="h-6 w-6" />
+                  </button>
+                </div>
               </div>
             </div>
           </nav>
+          
+          {/* Main Menu Sidebar (Mobile) */}
+          <MainMenuSidebar 
+            isOpen={isMainMenuOpen}
+            onClose={() => setIsMainMenuOpen(false)}
+            view={view}
+            setView={setView}
+            isAdminAuth={isAdminAuth}
+            toggleTheme={toggleTheme}
+            theme={theme}
+          />
 
           {/* Page Content */}
           <div className="min-h-[calc(100vh-64px)] dark:text-gray-200">
@@ -424,6 +508,15 @@
           });
         }
       }, [quizState, selectedTest, dataBasePath]);
+      
+      const handleProgressChange = (testId, answers) => {
+         setAllProgress(prev => ({ ...prev, [testId]: Object.keys(answers).length }));
+      };
+      
+      const handleDeleteProgress = (testId) => {
+        localStorage.removeItem(`qs-progress-${testId}`);
+        setAllProgress(prev => ({ ...prev, [testId]: 0 }));
+      };
 
       const handleStartQuiz = (test) => {
         setSelectedTest(test);
@@ -472,6 +565,7 @@
               tests={tests} 
               progress={allProgress}
               onSelect={handleStartQuiz} 
+              onDeleteProgress={handleDeleteProgress}
             />
           )}
           {quizState === 'in_progress' && (
@@ -484,7 +578,7 @@
                   test={selectedTest}
                   questions={questions}
                   initialAnswers={userAnswers}
-                  onProgressChange={(answers) => setAllProgress(prev => ({ ...prev, [selectedTest.id]: Object.keys(answers).length }))}
+                  onProgressChange={handleProgressChange}
                   onComplete={handleQuizComplete}
                   onBack={handleReset}
                 />
@@ -512,7 +606,7 @@
     }
 
     // --- Student: TestSelector ---
-    function TestSelector({ tests, progress, onSelect }) {
+    function TestSelector({ tests, progress, onSelect, onDeleteProgress }) {
       return (
         <div>
           <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center dark:text-gray-100">Select a Test</h2>
@@ -526,20 +620,35 @@
               const progressPercent = questionCount > 0 ? (savedCount / questionCount) * 100 : 0;
 
               return (
-                <button
+                <div
                   key={test.id}
-                  onClick={() => onSelect(test)}
-                  className="p-6 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow text-left dark:bg-gray-800 dark:hover:shadow-indigo-500/20"
+                  className="bg-white rounded-lg shadow-md text-left dark:bg-gray-800 flex flex-col"
                 >
-                  <h3 className="text-xl font-semibold text-indigo-600 dark:text-indigo-400">{test.name}</h3>
-                  <p className="text-sm text-gray-500 mt-2 dark:text-gray-400">
-                    {test.quizMode ? 'Quiz Mode: Graded at the end' : 'Practice Mode: Instant feedback'}
-                  </p>
+                  <button
+                    onClick={() => onSelect(test)}
+                    className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex-1"
+                  >
+                    <h3 className="text-xl font-semibold text-indigo-600 dark:text-indigo-400">{test.name}</h3>
+                    <p className="text-sm text-gray-500 mt-2 dark:text-gray-400">
+                      {test.quizMode ? 'Quiz Mode: Graded at the end' : 'Practice Mode: Instant feedback'}
+                    </p>
+                  </button>
                   {questionCount > 0 && (
-                    <div className="mt-4">
-                      <div className="flex justify-between text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    <div className="p-6 pt-0">
+                      <div className="flex justify-between items-center text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
                         <span>Progress</span>
-                        <span>{savedCount} / {questionCount}</span>
+                        <div className="flex items-center">
+                          <span>{savedCount} / {questionCount}</span>
+                          {savedCount > 0 && (
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); onDeleteProgress(test.id); }}
+                              className="ml-2 p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+                              title="Delete progress"
+                            >
+                              <IconTrash className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
                         <div 
@@ -549,7 +658,7 @@
                       </div>
                     </div>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
@@ -604,7 +713,7 @@
             Back to Tests
           </button>
           <h3 className="font-semibold text-lg mb-4 dark:text-gray-100">Questions</h3>
-          <div className="flex flex-wrap gap-2 overflow-y-auto">
+          <div className="flex flex-wrap gap-2 overflow-y-auto p-1 max-h-64 md:max-h-none md:flex-1">
             {questions.map((q, index) => (
               <button
                 key={q.id}
@@ -640,12 +749,18 @@
       const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
       const [answers, setAnswers] = useState(initialAnswers);
       const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+      const [showFeedback, setShowFeedback] = useState({}); // { [questionId]: boolean }
       
       // Save progress to localStorage
       useEffect(() => {
         localStorage.setItem(`qs-progress-${test.id}`, JSON.stringify(answers));
-        onProgressChange(answers); // Notify parent of progress change
+        onProgressChange(test.id, answers); // Notify parent of progress change
       }, [answers, test.id]);
+      
+      // Reset feedback when question changes
+      useEffect(() => {
+        setShowFeedback({});
+      }, [currentQuestionIndex]);
 
       const handleAnswer = (questionId, answer) => {
         setAnswers(prev => ({ ...prev, [questionId]: answer }));
@@ -653,6 +768,18 @@
 
       const handleSubmit = () => {
         onComplete(answers);
+      };
+      
+      const handlePrev = () => {
+        setCurrentQuestionIndex(i => Math.max(0, i - 1));
+      };
+      
+      const handleNext = () => {
+        setCurrentQuestionIndex(i => Math.min(questions.length - 1, i + 1));
+      };
+      
+      const handleCheck = (questionId) => {
+        setShowFeedback(prev => ({ ...prev, [questionId]: true }));
       };
       
       const currentQuestion = questions[currentQuestionIndex];
@@ -677,8 +804,8 @@
             ></div>
           )}
           {/* Sidebar content */}
-          <div className={`fixed md:sticky top-0 md:top-20 z-40 md:z-10
-                           h-full md:h-auto
+          <div className={`fixed md:sticky top-16 md:top-20 z-40 md:z-10
+                           h-[calc(100%-4rem)] md:h-auto
                            w-72 md:w-64 
                            transition-transform transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
                            `}>
@@ -705,38 +832,61 @@
                 isQuizMode={test.quizMode}
                 userAnswer={answers[currentQuestion.id] || null}
                 onAnswer={(answer) => handleAnswer(currentQuestion.id, answer)}
+                showFeedback={showFeedback[currentQuestion.id] || false}
               />
             ) : (
               <p>Loading question...</p>
             )}
+            
+            {/* Navigation buttons */}
+            <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+              <button
+                onClick={handlePrev}
+                disabled={currentQuestionIndex === 0}
+                className="flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 disabled:opacity-50 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-600"
+              >
+                <IconChevronLeft className="h-5 w-5 mr-1" />
+                Prev
+              </button>
+              
+              {!test.quizMode && (
+                <button
+                  onClick={() => handleCheck(currentQuestion.id)}
+                  disabled={showFeedback[currentQuestion.id]}
+                  className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Check Answer
+                </button>
+              )}
+              
+              <button
+                onClick={handleNext}
+                disabled={currentQuestionIndex === questions.length - 1}
+                className="flex items-center px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+              >
+                Next
+                <IconChevronRight className="h-5 w-5 ml-1" />
+              </button>
+            </div>
+            
           </div>
         </div>
       );
     }
 
     // --- Student: QuestionCard ---
-    function QuestionCard({ question, isQuizMode, userAnswer, onAnswer }) {
+    function QuestionCard({ question, isQuizMode, userAnswer, onAnswer, showFeedback }) {
       const [selected, setSelected] = useState(null);
-      const [feedback, setFeedback] = useState(null); // 'correct' or 'incorrect'
 
       useEffect(() => {
         // Reset local state when question changes or answer is loaded
         setSelected(userAnswer);
-        setFeedback(null);
-        if (!isQuizMode && userAnswer) {
-          setFeedback(userAnswer === question.answer ? 'correct' : 'incorrect');
-        }
-      }, [question, userAnswer, isQuizMode]);
+      }, [question, userAnswer]);
 
       const handleSelect = (answer) => {
-        if (feedback && !isQuizMode) return; // Don't allow change after feedback shown
-        
+        if (showFeedback && !isQuizMode) return; // Don't allow change after feedback shown
         setSelected(answer);
         onAnswer(answer);
-        
-        if (!isQuizMode) {
-          setFeedback(answer === question.answer ? 'correct' : 'incorrect');
-        }
       };
 
       const getButtonClass = (option) => {
@@ -747,7 +897,7 @@
         }
         
         // Practice Mode
-        if (feedback) {
+        if (showFeedback) {
           if (option === question.answer) return 'bg-green-500 text-white dark:bg-green-600';
           if (option === selected && option !== question.answer) return 'bg-red-500 text-white dark:bg-red-600';
           return 'bg-white opacity-50 cursor-not-allowed dark:bg-gray-800 dark:opacity-40';
@@ -776,7 +926,7 @@
                 <button
                   key={index}
                   onClick={() => handleSelect(opt)}
-                  disabled={feedback && !isQuizMode}
+                  disabled={showFeedback && !isQuizMode}
                   className={`w-full text-left p-4 rounded-lg border border-gray-300 dark:border-gray-600 font-medium transition-colors ${getButtonClass(opt)}`}
                 >
                   {opt}
@@ -788,18 +938,18 @@
               type="text"
               value={selected || ''}
               onChange={(e) => handleSelect(e.target.value)}
-              disabled={feedback && !isQuizMode}
+              disabled={showFeedback && !isQuizMode}
               placeholder="Type your answer here..."
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
             />
           )}
 
-          {!isQuizMode && feedback === 'correct' && (
+          {!isQuizMode && showFeedback && (selected === question.answer) && (
             <div className="mt-4 p-3 rounded-lg bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 font-medium">
               Correct! The answer is {question.answer}.
             </div>
           )}
-          {!isQuizMode && feedback === 'incorrect' && (
+          {!isQuizMode && showFeedback && (selected !== question.answer) && (
             <div className="mt-4 p-3 rounded-lg bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 font-medium">
               Incorrect. The correct answer is {question.answer}.
             </div>
@@ -910,8 +1060,8 @@
             ></div>
           )}
           {/* Sidebar content */}
-          <div className={`fixed md:sticky top-0 md:top-20 z-40 md:z-10
-                           h-full md:h-auto
+          <div className={`fixed md:sticky top-16 md:top-20 z-40 md:z-10
+                           h-[calc(100%-4rem)] md:h-auto
                            w-72 md:w-64 
                            transition-transform transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
                            `}>
@@ -1388,7 +1538,7 @@
           {/* Mobile Menu Button */}
           <button 
             onClick={() => setIsSidebarOpen(true)}
-            className="md:hidden fixed top-18 left-2 z-20 p-2 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg shadow"
+            className="md:hidden fixed top-20 left-4 z-20 p-2 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg shadow"
             aria-label="Open menu"
           >
             <IconMenu className="h-6 w-6 text-gray-800 dark:text-gray-200" />
@@ -1403,8 +1553,8 @@
             ></div>
           )}
           {/* Sidebar content */}
-          <div className={`fixed md:sticky top-0 md:top-16 z-40 md:z-10
-                           h-screen md:h-[calc(100vh-64px)]
+          <div className={`fixed md:sticky top-16 z-40 md:z-10
+                           h-[calc(100vh-4rem)] md:h-[calc(100vh-4rem)]
                            w-72 
                            transition-transform transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
                            `}>
@@ -1574,6 +1724,42 @@
         setDraggedId(null);
         setDragOverId(null);
       };
+      
+      // --- Touch Handlers ---
+      const handleTouchStart = (e, id) => {
+        setDraggedId(id);
+        // Add class to body to prevent page scroll
+        document.body.classList.add('dragging-touch');
+      };
+      
+      const handleTouchMove = (e) => {
+        if (!draggedId) return;
+        
+        // Prevent page scroll
+        e.preventDefault();
+        
+        const touch = e.touches[0];
+        const element = document.elementFromPoint(touch.clientX, touch.clientY);
+        
+        if (element) {
+          const targetLi = element.closest('li[data-id]');
+          if (targetLi && targetLi.dataset.id !== dragOverId) {
+            setDragOverId(targetLi.dataset.id);
+          }
+        }
+      };
+      
+      const handleTouchEnd = (e) => {
+        if (dragOverId) {
+          // Manually create a fake event object for handleDrop
+          const fakeEvent = { preventDefault: () => {} };
+          handleDrop(fakeEvent, dragOverId);
+        }
+        setDraggedId(null);
+        setDragOverId(null);
+        // Remove class from body
+        document.body.classList.remove('dragging-touch');
+      };
 
       return (
         <nav className="w-full h-full bg-white border-r border-gray-200 p-4 flex flex-col dark:bg-gray-800 dark:border-gray-700">
@@ -1581,18 +1767,22 @@
             <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2 dark:text-gray-400">Tests (Drag to Reorder)</h2>
             {loading && <IconLoader className="h-5 w-5 text-gray-400" />}
             <ul 
-              className="space-y-1 mb-6"
+              className="space-y-1 mb-6 p-1"
               onDragLeave={handleDragLeave}
             >
               {tests.map(test => (
                 <li 
-                  key={test.id} 
+                  key={test.id}
+                  data-id={test.id} // Add data-id for touch target
                   className="group flex items-center justify-between relative" // Added relative
                   draggable="true"
                   onDragStart={(e) => handleDragStart(e, test.id)}
                   onDragOver={(e) => handleDragOver(e, test.id)}
                   onDrop={(e) => handleDrop(e, test.id)}
                   onDragEnd={handleDragEnd}
+                  onTouchStart={(e) => handleTouchStart(e, test.id)}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
                 >
                   {/* Visual drag-over indicator */}
                   {dragOverId === test.id && <div className="drag-over-indicator"></div>}
@@ -1767,7 +1957,7 @@
               />
             )}
             <div className="flex-1 min-w-0">
-              <p className="text-lg font-medium text-gray-900 truncate dark:text-gray-100">{question.question}</p>
+              <p className="text-lg font-medium text-gray-900 dark:text-gray-100 break-words">{question.question}</p>
               <p className="text-sm text-gray-500 mt-1 dark:text-gray-400">
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${question.type === 'mc' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'} mr-2`}>
                   {question.type === 'mc' ? 'MC' : 'Fill'}
