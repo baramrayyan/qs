@@ -912,7 +912,7 @@
 
     // --- Student: QuestionCard ---
     function QuestionCard({ question, isQuizMode, userAnswer, onAnswer, showFeedback }) {
-      const [selected, setSelected] = useState(null);
+      const [selected, setSelected] = useState(userAnswer);
 
       useEffect(() => {
         // Reset local state when question changes or answer is loaded
