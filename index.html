@@ -1,0 +1,1540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Qs - Quiz Platform</title>
+  
+  <!-- Load Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Configure Tailwind for 'class' dark mode -->
+  <!-- This MUST come AFTER loading Tailwind CSS -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {},
+      },
+      plugins: [],
+    }
+  </script>
+  
+  <!-- Load React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  
+  <!-- Load Babel to transpile JSX in the browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    /* Add a simple fade-in for the root element */
+    #root {
+      opacity: 0;
+      transition: opacity 0.5s ease-in;
+    }
+    
+    /* Ensure group-hover works for sidebar delete */
+    .group:hover .group-hover\:opacity-100 {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body class="bg-gray-100">
+  
+  <!-- The React app will mount here -->
+  <div id="root"></div>
+
+  <!-- This is where all the React/JSX code goes -->
+  <script type="text/babel" data-type="module">
+    
+    // --- Firebase Imports (from CDN) ---
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { 
+      getFirestore, 
+      doc, 
+      addDoc,
+      setDoc, 
+      getDoc, // Import getDoc
+      updateDoc,
+      deleteDoc, 
+      onSnapshot, 
+      collection, 
+      query,
+      getDocs,
+      writeBatch,
+      setLogLevel,
+      orderBy
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // --- React Imports ---
+    const { useState, useEffect, useCallback, useMemo } = React;
+
+    // --- SVG Icons ---
+    const IconPlus = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> );
+    const IconEdit = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg> );
+    const IconTrash = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg> );
+    const IconX = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> );
+    const IconDownload = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> );
+    const IconUpload = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg> );
+    const IconLoader = ({ className }) => ( <svg className={`animate-spin ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> );
+    const IconCheck = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> );
+    const IconChevronLeft = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg> );
+    const IconRepeat = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.6A9 9 0 0 1 12 3a9 9 0 0 1 9 9.4"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.4A9 9 0 0 1 12 21a9 9 0 0 1-9-9.4"/></svg> );
+    const IconEye = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg> );
+    const IconMoon = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg> );
+    const IconSun = ({ className }) => ( <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg> );
+
+
+    // --- Firebase Initialization and Auth ---
+    // User-provided Firebase config
+    const firebaseConfig = {
+        apiKey: "AIzaSyA--lHehLbv2o_PMObgNXTJKphEf-KF_Lc",
+        authDomain: "qs-base.firebaseapp.com",
+        projectId: "qs-base",
+        storageBucket: "qs-base.firebasestorage.app",
+        messagingSenderId: "196222599386",
+        appId: "1:196222599386:web:f48ec04c166def41cd65e3",
+        measurementId: "G-DQ1FRLSF6H"
+    };
+
+    const appId = firebaseConfig.projectId || 'default-app-id'; // Use projectId as the appId
+    const initialAuthToken = null; // This is not needed for GitHub Pages deployment
+
+    // Default admin password, only used to seed DB on first login
+    const DEFAULT_ADMIN_PASSWORD = "admin123"; 
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    setLogLevel('Debug');
+
+    // --- Main App Component (Router) ---
+    function App() {
+      const [userId, setUserId] = useState(null);
+      const [isAuthReady, setIsAuthReady] = useState(false);
+      const [view, setView] = useState('student'); // 'student', 'admin', 'admin_login'
+      const [isAdminAuth, setIsAdminAuth] = useState(false);
+      const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+      
+      // Firestore paths
+      const dataBasePath = useMemo(() => `artifacts/${appId}/public/data`, [appId]);
+      const settingsBasePath = useMemo(() => `artifacts/${appId}/settings`, [appId]);
+
+
+      // --- Theme Effect ---
+      useEffect(() => {
+        const root = window.document.documentElement;
+        if (theme === 'dark') {
+          root.classList.add('dark');
+          localStorage.setItem('theme', 'dark');
+        } else {
+          root.classList.remove('dark');
+          localStorage.setItem('theme', 'light');
+        }
+      }, [theme]);
+
+      const toggleTheme = () => setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
+
+      // --- Authentication Effect ---
+      useEffect(() => {
+        const unsub = onAuthStateChanged(auth, async (user) => {
+          if (user) {
+            setUserId(user.uid);
+            setIsAuthReady(true);
+          } else {
+            try {
+              if (initialAuthToken) {
+                await signInWithCustomToken(auth, initialAuthToken);
+              } else {
+                await signInAnonymously(auth);
+              }
+            } catch (authError) {
+              console.error("Firebase Auth Error:", authError);
+              // Don't block student view on auth error
+              setIsAuthReady(true); 
+            }
+          }
+        });
+        return () => unsub();
+      }, []);
+      
+      // Fade in the app after auth is ready
+      useEffect(() => {
+        if(isAuthReady) {
+          document.getElementById('root').style.opacity = 1;
+        }
+      }, [isAuthReady]);
+
+      return (
+        <div className="min-h-screen bg-gray-100 dark:bg-gray-900 font-inter">
+          {/* Top Navigation Bar */}
+          <nav className="bg-white shadow-sm dark:bg-gray-800 dark:border-b dark:border-gray-700">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between h-16">
+                <div className="flex items-center">
+                  <h1 className="text-2xl font-bold text-indigo-600">Qs</h1>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setView('student')}
+                    className={`px-3 py-2 rounded-md text-sm font-medium ${
+                      view === 'student'
+                        ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
+                        : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    Student
+                  </button>
+                  <button
+                    onClick={() => setView(isAdminAuth ? 'admin' : 'admin_login')}
+                    className={`px-3 py-2 rounded-md text-sm font-medium ${
+                      view === 'admin' || view === 'admin_login'
+                        ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
+                        : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    Admin
+                  </button>
+                  <button 
+                    onClick={toggleTheme} 
+                    className="p-2 rounded-full text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+                    aria-label="Toggle theme"
+                  >
+                    {theme === 'light' ? <IconMoon className="h-5 w-5" /> : <IconSun className="h-5 w-5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </nav>
+
+          {/* Page Content */}
+          <div className="h-[calc(100vh-64px)] overflow-y-auto dark:text-gray-200">
+            {!isAuthReady ? (
+              <div className="flex justify-center items-center h-full">
+                <IconLoader className="h-12 w-12 text-indigo-600" />
+              </div>
+            ) : view === 'student' ? (
+              <StudentView dataBasePath={dataBasePath} />
+            ) : view === 'admin_login' ? (
+              <AdminLoginView 
+                onLoginSuccess={() => { setIsAdminAuth(true); setView('admin'); }} 
+                settingsBasePath={settingsBasePath}
+              />
+            ) : view === 'admin' && isAdminAuth ? (
+              <AdminView 
+                dataBasePath={dataBasePath} 
+                settingsBasePath={settingsBasePath}
+                isAuthReady={isAuthReady} 
+                onLogout={() => { setIsAdminAuth(false); setView('student'); }}
+              />
+            ) : (
+              <AdminLoginView 
+                onLoginSuccess={() => { setIsAdminAuth(true); setView('admin'); }} 
+                error="Please log in to access the admin panel."
+                settingsBasePath={settingsBasePath}
+              />
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // --- Admin Login View ---
+    function AdminLoginView({ onLoginSuccess, error: initialError, settingsBasePath }) {
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState(initialError || null);
+      const [loading, setLoading] = useState(false);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError(null);
+
+        const adminConfigRef = doc(db, settingsBasePath, 'config');
+
+        try {
+          const docSnap = await getDoc(adminConfigRef);
+
+          if (!docSnap.exists()) {
+            // No password set. Check against default.
+            if (password === DEFAULT_ADMIN_PASSWORD) {
+              // First login. Save the default password to DB.
+              try {
+                await setDoc(adminConfigRef, { password: DEFAULT_ADMIN_PASSWORD });
+              } catch (dbError) {
+                console.error("Error saving default password:", dbError);
+                // Log in anyway, but show a console warning
+              }
+              onLoginSuccess();
+            } else {
+              setError("Incorrect password. Please try again.");
+            }
+          } else {
+            // Password exists. Check against DB.
+            const correctPassword = docSnap.data().password;
+            if (password === correctPassword) {
+              onLoginSuccess();
+            } else {
+              setError("Incorrect password. Please try again.");
+            }
+          }
+        } catch (err) {
+          console.error("Error fetching admin password:", err);
+          setError("Could not verify password. Please try again.");
+        } finally {
+          setLoading(false);
+          setPassword('');
+        }
+      };
+
+      return (
+        <div className="flex items-center justify-center h-full p-4">
+          <div className="w-full max-w-sm bg-white p-8 rounded-lg shadow-xl dark:bg-gray-800">
+            <h2 className="text-2xl font-bold text-gray-800 text-center mb-6 dark:text-gray-100">Admin Login</h2>
+            <form onSubmit={handleSubmit}>
+              <div className="mb-4">
+                <label htmlFor="admin-password" className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">
+                  Password
+                </label>
+                <input
+                  id="admin-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-indigo-500"
+                  required
+                />
+              </div>
+              
+              {error && (
+                <p className="text-sm text-red-600 dark:text-red-400 mb-4">{error}</p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-indigo-600 text-white font-semibold px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center"
+              >
+                {loading ? <IconLoader className="h-5 w-5" /> : 'Login'}
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // --- Student View ---
+    function StudentView({ dataBasePath }) {
+      const [tests, setTests] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+      
+      const [quizState, setQuizState] = useState('selecting'); // 'selecting', 'in_progress', 'completed', 'reviewing'
+      const [selectedTest, setSelectedTest] = useState(null);
+      const [questions, setQuestions] = useState([]);
+      const [userAnswers, setUserAnswers] = useState({});
+
+      // --- Fetch Tests ---
+      useEffect(() => {
+        const testsCol = collection(db, dataBasePath, 'tests');
+        const unsub = onSnapshot(testsCol, (snapshot) => {
+          const cats = [];
+          snapshot.forEach(doc => {
+            cats.push({ id: doc.id, ...doc.data() });
+          });
+          setTests(cats);
+          setLoading(false);
+        }, (err) => {
+          console.error("Error fetching tests:", err);
+          setError("Failed to load tests.");
+          setLoading(false);
+        });
+        return () => unsub();
+      }, [dataBasePath]);
+
+      // --- Fetch Questions for Selected Test ---
+      useEffect(() => {
+        if (quizState === 'in_progress' && selectedTest) {
+          setLoading(true);
+          const questionsCol = collection(db, dataBasePath, 'tests', selectedTest.id, 'questions');
+          // Order by the 'order' field
+          getDocs(query(questionsCol, orderBy("order", "asc"))).then(snapshot => {
+            const newQuestions = [];
+            snapshot.forEach(doc => {
+              newQuestions.push({ id: doc.id, ...doc.data() });
+            });
+            setQuestions(newQuestions);
+            setUserAnswers({});
+            setLoading(false);
+          }).catch(err => {
+            console.error("Error fetching questions:", err);
+            setError("Failed to load questions.");
+            setLoading(false);
+          });
+        }
+      }, [quizState, selectedTest, dataBasePath]);
+
+      const handleStartQuiz = (test) => {
+        setSelectedTest(test);
+        setQuizState('in_progress');
+      };
+
+      const handleQuizComplete = (answers) => {
+        setUserAnswers(answers);
+        setQuizState('completed');
+      };
+
+      const handleReset = () => {
+        setQuizState('selecting');
+        setSelectedTest(null);
+        setQuestions([]);
+        setUserAnswers({});
+      };
+
+      if (loading) {
+        return (
+          <div className="flex justify-center items-center h-full">
+            <IconLoader className="h-12 w-12 text-indigo-600 dark:text-indigo-400" />
+          </div>
+        );
+      }
+
+      if (error) {
+        return <div className="text-center p-8 text-red-600 dark:text-red-400">{error}</div>;
+      }
+
+      return (
+        <div className="max-w-4xl mx-auto p-4 md:p-8">
+          {quizState === 'selecting' && (
+            <TestSelector tests={tests} onSelect={handleStartQuiz} />
+          )}
+          {quizState === 'in_progress' && questions.length > 0 && (
+            <QuizView
+              test={selectedTest}
+              questions={questions}
+              onComplete={handleQuizComplete}
+              onBack={handleReset}
+            />
+          )}
+          {quizState === 'completed' && (
+            <QuizResult
+              questions={questions}
+              userAnswers={userAnswers}
+              onReview={() => setQuizState('reviewing')}
+              onRetry={() => handleStartQuiz(selectedTest)}
+              onReset={handleReset}
+            />
+          )}
+          {quizState === 'reviewing' && (
+            <QuizReview
+              questions={questions}
+              userAnswers={userAnswers}
+              onComplete={handleReset}
+            />
+          )}
+        </div>
+      );
+    }
+
+    // --- Student: TestSelector ---
+    function TestSelector({ tests, onSelect }) {
+      return (
+        <div>
+          <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center dark:text-gray-100">Select a Test</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {tests.length === 0 && (
+              <p className="text-gray-500 col-span-full text-center dark:text-gray-400">No tests available at this time.</p>
+            )}
+            {tests.map(test => (
+              <button
+                key={test.id}
+                onClick={() => onSelect(test)}
+                className="p-6 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow text-left dark:bg-gray-800 dark:hover:shadow-indigo-500/20"
+              >
+                <h3 className="text-xl font-semibold text-indigo-600 dark:text-indigo-400">{test.name}</h3>
+                <p className="text-sm text-gray-500 mt-2 dark:text-gray-400">
+                  {test.quizMode ? 'Quiz Mode: Graded at the end' : 'Practice Mode: Instant feedback'}
+                </p>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // --- Student: QuizView ---
+    function QuizView({ test, questions, onComplete, onBack }) {
+      const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+      const [answers, setAnswers] = useState({});
+      const [showFeedback, setShowFeedback] = useState(false);
+
+      const handleAnswer = (questionId, answer) => {
+        setAnswers(prev => ({ ...prev, [questionId]: answer }));
+      };
+
+      const handleNext = () => {
+        if (!test.quizMode) {
+          // Practice Mode Logic
+          if (!showFeedback) {
+            // First click: Show feedback
+            setShowFeedback(true); 
+          } else {
+            // Second click: Move to next question
+            setShowFeedback(false);
+            if (currentQuestionIndex < questions.length - 1) {
+              setCurrentQuestionIndex(prev => prev + 1);
+            }
+          }
+        } else {
+          // Quiz Mode Logic (original)
+          if (currentQuestionIndex < questions.length - 1) {
+            setCurrentQuestionIndex(prev => prev + 1);
+          }
+        }
+      };
+
+      const handleSubmit = () => {
+        if (!test.quizMode && !showFeedback) {
+          // Practice mode, final question, first click
+          setShowFeedback(true);
+        } else {
+          // Quiz mode OR Practice mode after feedback
+          onComplete(answers);
+        }
+      };
+      
+      const currentQuestion = questions[currentQuestionIndex];
+
+      return (
+        <div className="bg-white p-6 rounded-lg shadow-xl max-w-2xl mx-auto dark:bg-gray-800">
+          <div className="flex justify-between items-center mb-4">
+            <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-700 flex items-center dark:text-gray-400 dark:hover:text-gray-200">
+              <IconChevronLeft className="h-4 w-4 mr-1" />
+              Back to Tests
+            </button>
+            <span className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+              Question {currentQuestionIndex + 1} of {questions.length}
+            </span>
+          </div>
+          
+          <QuestionCard
+            key={currentQuestion.id}
+            question={currentQuestion}
+            isQuizMode={test.quizMode}
+            userAnswer={answers[currentQuestion.id] || null}
+            onAnswer={(answer) => handleAnswer(currentQuestion.id, answer)}
+            showFeedback={showFeedback}
+          />
+
+          <div className="mt-6 flex justify-between items-center">
+            <span className="text-sm text-gray-500 dark:text-gray-400">{test.quizMode ? "Answer will be shown at the end." : (showFeedback ? "Click Next to continue." : "Select an answer.")}</span>
+            {currentQuestionIndex < questions.length - 1 ? (
+              <button
+                onClick={handleNext}
+                disabled={!answers[currentQuestion.id] && test.quizMode} // Disable if no answer in quiz mode
+                className="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {test.quizMode ? 'Next' : (showFeedback ? 'Next' : 'Check Answer')}
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={!answers[currentQuestion.id] && test.quizMode}
+                className="px-6 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                {test.quizMode ? 'Finish Quiz' : (showFeedback ? 'Finish Quiz' : 'Check Answer')}
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // --- Student: QuestionCard ---
+    function QuestionCard({ question, isQuizMode, userAnswer, onAnswer, showFeedback }) {
+      const [selected, setSelected] = useState(null);
+
+      useEffect(() => {
+        // Reset local state when question changes
+        setSelected(userAnswer);
+      }, [question, userAnswer]);
+
+      const handleSelect = (answer) => {
+        if (showFeedback && !isQuizMode) return; // Don't allow change after feedback shown
+        setSelected(answer);
+        onAnswer(answer);
+      };
+
+      const getButtonClass = (option) => {
+        if (isQuizMode) {
+          return option === selected
+            ? 'bg-indigo-600 text-white dark:bg-indigo-500'
+            : 'bg-white hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700';
+        }
+        
+        // Practice Mode
+        if (showFeedback) {
+          if (option === question.answer) return 'bg-green-500 text-white dark:bg-green-600';
+          if (option === selected && option !== question.answer) return 'bg-red-500 text-white dark:bg-red-600';
+          return 'bg-white opacity-50 cursor-not-allowed dark:bg-gray-800 dark:opacity-40';
+        }
+        
+        return option === selected
+          ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
+          : 'bg-white hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700';
+      };
+
+      return (
+        <div>
+          <h3 className="text-xl font-semibold text-gray-800 mb-4 dark:text-gray-100">{question.question}</h3>
+          {question.imageUrl && (
+            <img 
+              src={question.imageUrl} 
+              alt="Question visual" 
+              className="rounded-lg mb-4 max-h-60 w-full object-contain"
+              onError={(e) => e.currentTarget.style.display = 'none'} // Hide if image fails
+            />
+          )}
+
+          {question.type === 'mc' ? (
+            <div className="space-y-3">
+              {question.options.map((opt, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleSelect(opt)}
+                  disabled={showFeedback && !isQuizMode}
+                  className={`w-full text-left p-4 rounded-lg border border-gray-300 dark:border-gray-600 font-medium transition-colors ${getButtonClass(opt)}`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <input
+              type="text"
+              value={selected || ''}
+              onChange={(e) => handleSelect(e.target.value)}
+              disabled={showFeedback && !isQuizMode}
+              placeholder="Type your answer here..."
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+            />
+          )}
+
+          {!isQuizMode && showFeedback && (selected === question.answer) && (
+            <div className="mt-4 p-3 rounded-lg bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 font-medium">
+              Correct! The answer is {question.answer}.
+            </div>
+          )}
+          {!isQuizMode && showFeedback && (selected !== question.answer) && (
+            <div className="mt-4 p-3 rounded-lg bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 font-medium">
+              Incorrect. The correct answer is {question.answer}.
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // --- Student: QuizResult ---
+    function QuizResult({ questions, userAnswers, onReview, onRetry, onReset }) {
+      const { score, correct, total } = useMemo(() => {
+        let correct = 0;
+        const total = questions.length;
+        questions.forEach(q => {
+          // Use case-insensitive and trim for fill-in-the-blank
+          const isCorrect = q.type === 'fill' 
+            ? (userAnswers[q.id] || '').trim().toLowerCase() === (q.answer || '').trim().toLowerCase()
+            : userAnswers[q.id] === q.answer;
+          if (isCorrect) {
+            correct++;
+          }
+        });
+        const score = total > 0 ? (correct / total) * 100 : 0;
+        return { score: score.toFixed(0), correct, total };
+      }, [questions, userAnswers]);
+
+      return (
+        <div className="bg-white p-8 rounded-lg shadow-xl text-center max-w-md mx-auto dark:bg-gray-800">
+          <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100">Quiz Complete!</h2>
+          <p className="text-lg text-gray-600 mt-2 dark:text-gray-300">Your Score:</p>
+          <div className="my-6">
+            <span className="text-7xl font-bold text-indigo-600 dark:text-indigo-400">{score}</span>
+            <span className="text-3xl font-semibold text-gray-500 dark:text-gray-400">%</span>
+          </div>
+          <p className="text-xl text-gray-700 dark:text-gray-200">
+            You got <span className="font-bold">{correct}</span> out of <span className="font-bold">{total}</span> questions correct.
+          </p>
+          <div className="mt-8 flex flex-col sm:flex-row sm:justify-center gap-3">
+            <button
+              onClick={onReview}
+              className="flex items-center justify-center w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <IconEye className="h-5 w-5 mr-2" />
+              Review Answers
+            </button>
+            <button
+              onClick={onRetry}
+              className="flex items-center justify-center w-full sm:w-auto px-6 py-3 bg-white text-indigo-600 border border-indigo-600 font-semibold rounded-lg hover:bg-indigo-50 dark:bg-gray-700 dark:text-indigo-300 dark:border-indigo-500 dark:hover:bg-gray-600"
+            >
+              <IconRepeat className="h-5 w-5 mr-2" />
+              Try Again
+            </button>
+          </div>
+          <button onClick={onReset} className="mt-4 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+            Back to Tests
+          </button>
+        </div>
+      );
+    }
+
+    // --- Student: QuizReview ---
+    function QuizReview({ questions, userAnswers, onComplete }) {
+      return (
+        <div className="bg-white p-6 rounded-lg shadow-xl max-w-2xl mx-auto dark:bg-gray-800">
+          <h2 className="text-3xl font-bold text-gray-800 mb-6 dark:text-gray-100">Review Answers</h2>
+          <div className="space-y-6">
+            {questions.map((q, index) => {
+              const userAnswer = userAnswers[q.id] || "No Answer";
+              const isCorrect = q.type === 'fill'
+                ? (userAnswer || '').trim().toLowerCase() === (q.answer || '').trim().toLowerCase()
+                : userAnswer === q.answer;
+              
+              return (
+                <div key={q.id} className={`p-4 rounded-lg border ${isCorrect ? 'border-green-300 bg-green-50 dark:bg-green-900/50 dark:border-green-700' : 'border-red-300 bg-red-50 dark:bg-red-900/50 dark:border-red-700'}`}>
+                  <p className="font-semibold text-gray-800 dark:text-gray-100">
+                    {index + 1}. {q.question}
+                  </p>
+                  {q.imageUrl && (
+                    <img 
+                      src={q.imageUrl} 
+                      alt="Question visual" 
+                      className="rounded-lg my-2 max-h-40 object-contain"
+                      onError={(e) => e.currentTarget.style.display = 'none'}
+                    />
+                  )}
+                  
+                  {/* New Review Logic */}
+                  {q.type === 'mc' ? (
+                    <div className="mt-3 space-y-2">
+                      {q.options.map((option, optIndex) => {
+                        const isCorrectAnswer = option === q.answer;
+                        const isUserAnswer = option === userAnswer;
+                        let optionClass = "p-3 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-700";
+                        
+                        if (isCorrectAnswer) {
+                          optionClass = "p-3 rounded-lg border border-green-500 bg-green-100 dark:bg-green-900 dark:border-green-700 text-green-800 dark:text-green-200 font-medium";
+                        } else if (isUserAnswer && !isCorrect) {
+                          optionClass = "p-3 rounded-lg border border-red-500 bg-red-100 dark:bg-red-900 dark:border-red-700 text-red-800 dark:text-red-300 font-medium";
+                        }
+                        
+                        return (
+                          <div key={optIndex} className={optionClass}>
+                            {option}
+                            {isCorrectAnswer && <span className="text-xs font-bold ml-2">(Correct Answer)</span>}
+                            {isUserAnswer && !isCorrect && <span className="text-xs font-bold ml-2">(Your Answer)</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    // Fill-in-the-blank review
+                    <div className="mt-3 space-y-2">
+                      <div className={`p-3 rounded-lg border ${isCorrect ? 'border-green-500 bg-green-100 dark:bg-green-900' : 'border-red-500 bg-red-100 dark:bg-red-900'}`}>
+                        <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Your Answer: </span>
+                        <span className={`font-semibold ${isCorrect ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>{userAnswer}</span>
+                      </div>
+                      {!isCorrect && (
+                         <div className="p-3 rounded-lg border border-green-500 bg-green-100 dark:bg-green-900">
+                          <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Correct Answer: </span>
+                          <span className="font-semibold text-green-700 dark:text-green-300">{q.answer}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <button
+            onClick={onComplete}
+            className="w-full mt-8 px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            Back to Tests
+          </button>
+        </div>
+      );
+    }
+
+
+    // --- Admin View ---
+    function AdminView({ dataBasePath, settingsBasePath, isAuthReady, onLogout }) {
+      const [tests, setTests] = useState([]);
+      const [questions, setQuestions] = useState([]);
+      const [selectedTest, setSelectedTest] = useState(null);
+      const [loading, setLoading] = useState({ tests: true, questions: false });
+      const [error, setError] = useState(null);
+      
+      const [isEditorOpen, setIsEditorOpen] = useState(false);
+      const [editingQuestion, setEditingQuestion] = useState(null);
+      
+      // Modal states
+      const [isDeleteQuestionModalOpen, setIsDeleteQuestionModalOpen] = useState(false);
+      const [deletingQuestionId, setDeletingQuestionId] = useState(null);
+      const [isDeleteTestModalOpen, setIsDeleteTestModalOpen] = useState(false);
+      const [deletingTest, setDeletingTest] = useState(null);
+      
+      const [isJsonExportModalOpen, setIsJsonExportModalOpen] = useState(false);
+      const [isJsonImportModalOpen, setIsJsonImportModalOpen] = useState(false);
+      const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
+      const [parsedJsonToImport, setParsedJsonToImport] = useState(null);
+
+      const testsCol = useMemo(() => collection(db, dataBasePath, 'tests'), [dataBasePath]);
+
+      // --- Fetch Admin Tests ---
+      useEffect(() => {
+        if (!isAuthReady) return;
+        setLoading(prev => ({ ...prev, tests: true }));
+        const unsub = onSnapshot(testsCol, (snapshot) => {
+          const cats = [];
+          snapshot.forEach(doc => {
+            cats.push({ id: doc.id, ...doc.data() });
+          });
+          setTests(cats);
+          setLoading(prev => ({ ...prev, tests: false }));
+        }, (err) => {
+          console.error("Error fetching tests:", err);
+          setError("Failed to load tests.");
+          setLoading(prev => ({ ...prev, tests: false }));
+        });
+        return () => unsub();
+      }, [isAuthReady, testsCol]);
+
+      // --- Fetch Admin Questions (when test changes) ---
+      useEffect(() => {
+        if (!selectedTest) {
+          setQuestions([]);
+          return;
+        }
+        setLoading(prev => ({ ...prev, questions: true }));
+        const questionsCol = collection(db, dataBasePath, 'tests', selectedTest.id, 'questions');
+        // Order by the 'order' field
+        const unsub = onSnapshot(query(questionsCol, orderBy("order", "asc")), (snapshot) => {
+          const newQuestions = [];
+          snapshot.forEach(doc => {
+            newQuestions.push({ id: doc.id, ...doc.data() });
+          });
+          setQuestions(newQuestions);
+          setLoading(prev => ({ ...prev, questions: false }));
+        }, (err) => {
+          console.error("Error fetching questions:", err);
+          setError("Failed to load questions for this test.");
+          setLoading(prev => ({ ...prev, questions: false }));
+        });
+        return () => unsub();
+      }, [selectedTest, dataBasePath]);
+
+      // --- Admin CRUD Handlers ---
+      const handleAddTest = async (name, quizMode) => {
+        if (!name.trim()) return;
+        try {
+          await addDoc(testsCol, { name: name.trim(), quizMode: quizMode });
+        } catch (e) { console.error("Error adding test:", e); setError("Failed to add test."); }
+      };
+      
+      // --- Delete Test ---
+      const openDeleteTestModal = (test) => {
+        setDeletingTest(test);
+        setIsDeleteTestModalOpen(true);
+      };
+      
+      const handleDeleteTest = async () => {
+        if (!deletingTest) return;
+        
+        const testId = deletingTest.id;
+        const testName = deletingTest.name;
+        
+        setLoading(prev => ({ ...prev, tests: true }));
+        setIsDeleteTestModalOpen(false);
+        
+        try {
+          // 1. Delete all subcollection documents (questions)
+          const questionsColRef = collection(db, dataBasePath, 'tests', testId, 'questions');
+          const questionsSnapshot = await getDocs(questionsColRef);
+          const deleteBatch = writeBatch(db);
+          questionsSnapshot.forEach(doc => {
+            deleteBatch.delete(doc.ref);
+          });
+          await deleteBatch.commit();
+          
+          // 2. Delete the main test document
+          const testDocRef = doc(db, dataBasePath, 'tests', testId);
+          await deleteDoc(testDocRef);
+          
+          // 3. Clear selection if the deleted test was selected
+          if (selectedTest && selectedTest.id === testId) {
+            setSelectedTest(null);
+          }
+          
+        } catch (e) {
+          console.error("Error deleting test:", e);
+          setError(`Failed to delete test "${testName}".`);
+        } finally {
+          setLoading(prev => ({ ...prev, tests: false }));
+          setDeletingTest(null);
+        }
+      };
+
+      const handleToggleQuizMode = async (test, newQuizMode) => {
+        try {
+          const testDoc = doc(db, dataBasePath, 'tests', test.id);
+          await updateDoc(testDoc, { quizMode: newQuizMode });
+          // Update local state to match
+          setSelectedTest(prev => ({ ...prev, quizMode: newQuizMode }));
+        } catch (e) { console.error("Error updating quiz mode:", e); setError("Failed to update quiz mode."); }
+      };
+
+      const handleSaveQuestion = async (questionData) => {
+        if (!selectedTest) return;
+        const questionsCol = collection(db, dataBasePath, 'tests', selectedTest.id, 'questions');
+        
+        // This is the data from the modal, without 'order'
+        if (questionData.type === 'mc') {
+          questionData.options = questionData.options.filter(opt => opt.trim() !== '');
+        }
+        if (!questionData.imageUrl) {
+            questionData.imageUrl = "";
+        }
+
+        try {
+          if (editingQuestion) {
+            const questionDoc = doc(db, dataBasePath, 'tests', selectedTest.id, 'questions', editingQuestion.id);
+            // Preserve existing order when editing
+            questionData.order = editingQuestion.order !== undefined ? editingQuestion.order : questions.length;
+            await setDoc(questionDoc, questionData);
+          } else {
+            // Add new, set order to the end
+            questionData.order = questions.length;
+            await addDoc(questionsCol, questionData);
+          }
+          setIsEditorOpen(false);
+          setEditingQuestion(null);
+        } catch (e) { console.error("Error saving question:", e); setError("Failed to save question."); }
+      };
+
+      const openDeleteQuestionModal = (id) => { 
+        setDeletingQuestionId(id); 
+        setIsDeleteQuestionModalOpen(true); 
+      };
+
+      const handleDeleteQuestion = async () => {
+        if (!selectedTest || !deletingQuestionId) return;
+        try {
+          const questionDoc = doc(db, dataBasePath, 'tests', selectedTest.id, 'questions', deletingQuestionId);
+          await deleteDoc(questionDoc);
+          setIsDeleteQuestionModalOpen(false);
+          setDeletingQuestionId(null);
+        } catch (e) { console.error("Error deleting question:", e); setError("Failed to delete question."); }
+      };
+      
+      const handleJsonImport = (jsonString) => {
+        if (!selectedTest) {
+          setError("Please select a test first.");
+          return;
+        }
+        let importedQuestions;
+        try {
+          // Clean the string: remove leading/trailing whitespace and non-breaking spaces (\u00A0)
+          const cleanedJsonString = jsonString.replace(/\u00A0/g, " ").trim();
+          importedQuestions = JSON.parse(cleanedJsonString);
+          if (!Array.isArray(importedQuestions)) throw new Error("JSON must be an array.");
+          
+          // All validation passed. Store for confirmation.
+          setParsedJsonToImport(importedQuestions);
+          setIsImportConfirmOpen(true); // Open confirmation modal
+          setIsJsonImportModalOpen(false); // Close import modal
+          setError(null);
+
+        } catch (e) {
+          setError(`Invalid JSON: ${e.message}`);
+          setParsedJsonToImport(null);
+        }
+      };
+
+      const executeJsonImport = async () => {
+        if (!parsedJsonToImport || !selectedTest) return;
+
+        setLoading(prev => ({...prev, questions: true}));
+        setIsImportConfirmOpen(false);
+        
+        const questionsColRef = collection(db, dataBasePath, 'tests', selectedTest.id, 'questions');
+        
+        try {
+          // 1. Delete all existing questions in a batch
+          const existingQuery = await getDocs(questionsColRef);
+          const deleteBatch = writeBatch(db);
+          existingQuery.forEach(doc => {
+            deleteBatch.delete(doc.ref);
+          });
+          await deleteBatch.commit();
+
+          // 2. Add all new questions in a batch
+          const addBatch = writeBatch(db);
+          parsedJsonToImport.forEach((q, index) => { // Added index
+            const newQuestionRef = doc(questionsColRef); // Create new doc ref
+            
+            // Determine type if not provided
+            let questionType = q.type;
+            if (!questionType) {
+              // Check if options exists, is an array, and is not empty
+              questionType = (q.options && Array.isArray(q.options) && q.options.length > 0) ? 'mc' : 'fill';
+            }
+
+            addBatch.set(newQuestionRef, {
+              question: q.question || "",
+              answer: q.answer || "",
+              type: questionType,
+              options: (questionType === 'mc' && Array.isArray(q.options)) ? q.options : [], 
+              imageUrl: q.imageUrl || "",
+              order: index // <-- Add order field
+            });
+          });
+          await addBatch.commit();
+          
+        } catch (e) {
+          console.error("Error during batch import:", e);
+          setError("Failed to import questions. Data may be in an inconsistent state.");
+        } finally {
+          setLoading(prev => ({...prev, questions: false}));
+          setParsedJsonToImport(null); // Clear the stored JSON
+        }
+      };
+      
+      const openEditorForNew = () => { setEditingQuestion(null); setIsEditorOpen(true); };
+      const openEditorForEdit = (question) => { setEditingQuestion(question); setIsEditorOpen(true); };
+
+      const exportedJson = useMemo(() => {
+        const formattedQuestions = questions.map(({ id, ...q }) => ({
+          question: q.question,
+          answer: q.answer,
+          type: q.type,
+          options: q.options,
+          imageUrl: q.imageUrl || "",
+          order: q.order,
+        }));
+        return JSON.stringify(formattedQuestions, null, 2);
+      }, [questions]);
+
+      if (!isAuthReady) {
+        return <div className="p-8 text-center text-gray-500">Authenticating admin...</div>;
+      }
+
+      return (
+        <div className="flex flex-col md:flex-row h-full bg-gray-100 dark:bg-gray-900">
+          <AdminSidebar 
+            tests={tests}
+            selectedTest={selectedTest}
+            onSelectTest={setSelectedTest}
+            onAddTest={handleAddTest}
+            onDeleteTest={openDeleteTestModal} // Pass delete handler
+            loading={loading.tests}
+            authReady={isAuthReady}
+            onLogout={onLogout}
+            settingsBasePath={settingsBasePath} // Pass settings path
+          />
+          <main className="flex-1 overflow-y-auto p-4 md:p-8">
+            {error && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-4 dark:bg-red-900 dark:border-red-700 dark:text-red-300" role="alert">
+                <span className="block sm:inline">{error}</span>
+                <button className="absolute top-0 bottom-0 right-0 px-4 py-3" onClick={() => setError(null)}>
+                  <IconX className="h-6 w-6 text-red-500 dark:text-red-400" />
+                </button>
+              </div>
+            )}
+            {selectedTest ? (
+              <AdminTestManager
+                test={selectedTest}
+                questions={questions}
+                loading={loading.questions}
+                onAddNew={openEditorForNew}
+                onEdit={openEditorForEdit}
+                onDelete={openDeleteQuestionModal}
+                onExportJson={() => setIsJsonExportModalOpen(true)}
+                onImportJson={() => setIsJsonImportModalOpen(true)}
+                onToggleQuizMode={handleToggleQuizMode}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-xl text-gray-500 dark:text-gray-400">
+                  {loading.tests ? 'Loading tests...' : 'Select a test to start, or add a new one.'}
+                </p>
+              </div>
+            )}
+          </main>
+          {isEditorOpen && <AdminQuestionEditorModal question={editingQuestion} onClose={() => setIsEditorOpen(false)} onSave={handleSaveQuestion} />}
+          {isDeleteQuestionModalOpen && <AdminConfirmationModal title="Delete Question" message="Are you sure you want to delete this question? This action cannot be undone." onConfirm={handleDeleteQuestion} onCancel={() => setIsDeleteQuestionModalOpen(false)} />}
+          {isDeleteTestModalOpen && (
+            <AdminConfirmationModal 
+              title="Delete Test?" 
+              message={`Are you sure you want to delete the test "${deletingTest?.name}"? This will also delete ALL ${questions.length} questions inside it. This action cannot be undone.`} 
+              onConfirm={handleDeleteTest} 
+              onCancel={() => setIsDeleteTestModalOpen(false)} 
+            />
+          )}
+          {isJsonExportModalOpen && <AdminJsonExportModal jsonData={exportedJson} onClose={() => setIsJsonExportModalOpen(false)} />}
+          {isJsonImportModalOpen && <AdminJsonImportModal onClose={() => setIsJsonImportModalOpen(false)} onImport={handleJsonImport} />}
+          {isImportConfirmOpen && (
+            <AdminConfirmationModal
+              title="Overwrite Questions?"
+              message={`Are you sure you want to OVERWRITE all ${questions.length} existing questions in "${selectedTest.name}" with ${parsedJsonToImport.length} new ones? This action cannot be undone.`}
+              onConfirm={executeJsonImport}
+              onCancel={() => {
+                setIsImportConfirmOpen(false);
+                setParsedJsonToImport(null);
+              }}
+              confirmText="Overwrite & Import"
+              confirmColor="bg-blue-600 hover:bg-blue-700"
+            />
+          )}
+        </div>
+      );
+    }
+
+    // --- Admin: Sidebar ---
+    function AdminSidebar({ tests, selectedTest, onSelectTest, onAddTest, onDeleteTest, loading, authReady, onLogout, settingsBasePath }) {
+      const [newTestName, setNewTestName] = useState('');
+      const [newCategoryQuizMode, setNewCategoryQuizMode] = useState(false);
+      
+      const [newPassword, setNewPassword] = useState('');
+      const [confirmPassword, setConfirmPassword] = useState('');
+      const [passwordStatus, setPasswordStatus] = useState({ message: '', type: '' }); // 'success' or 'error'
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        onAddTest(newTestName, newCategoryQuizMode);
+        setNewTestName('');
+        setNewCategoryQuizMode(false);
+      };
+      
+      const handleChangePassword = async (e) => {
+          e.preventDefault();
+          if (newPassword === '') {
+            setPasswordStatus({ message: 'Password cannot be empty.', type: 'error' });
+            return;
+          }
+          if (newPassword !== confirmPassword) {
+            setPasswordStatus({ message: 'Passwords do not match.', type: 'error' });
+            return;
+          }
+
+          setPasswordStatus({ message: 'Updating...', type: 'loading' });
+          
+          const adminConfigRef = doc(db, settingsBasePath, 'config');
+          try {
+            await setDoc(adminConfigRef, { password: newPassword }); // Use setDoc to create or overwrite
+            setPasswordStatus({ message: 'Password updated successfully!', type: 'success' });
+            setNewPassword('');
+            setConfirmPassword('');
+          } catch (err) {
+            console.error("Error updating password:", err);
+            setPasswordStatus({ message: 'Failed to update password.', type: 'error' });
+          } finally {
+            setTimeout(() => setPasswordStatus({ message: '', type: '' }), 3000); // Clear status after 3s
+          }
+        };
+
+      return (
+        <nav className="w-full md:w-64 lg:w-72 bg-white border-r border-gray-200 p-4 flex-shrink-0 overflow-y-auto dark:bg-gray-800 dark:border-gray-700">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2 dark:text-gray-400">Tests</h2>
+          {loading && <IconLoader className="h-5 w-5 text-gray-400" />}
+          <ul className="space-y-1 mb-6">
+            {tests.map(test => (
+              <li key={test.id} className="group flex items-center justify-between">
+                <button
+                  onClick={() => onSelectTest(test)}
+                  className={`flex-1 text-left px-3 py-2 rounded-lg truncate ${
+                    selectedTest?.id === test.id
+                      ? 'bg-indigo-100 text-indigo-700 font-semibold dark:bg-indigo-900 dark:text-indigo-300'
+                      : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {test.name}
+                  {test.quizMode && <span className="ml-2 text-xs bg-indigo-200 text-indigo-800 dark:bg-indigo-800 dark:text-indigo-200 px-1.5 py-0.5 rounded-full">Quiz</span>}
+                </button>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onDeleteTest(test); }}
+                  className="p-1 ml-1 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity dark:hover:text-red-400"
+                  aria-label={`Delete ${test.name}`}
+                >
+                  <IconTrash className="h-4 w-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+          {authReady && (
+            <>
+              <form onSubmit={handleSubmit}>
+                <label htmlFor="new-test" className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2 dark:text-gray-400">Add New</label>
+                <input
+                  id="new-test"
+                  type="text"
+                  value={newTestName}
+                  onChange={(e) => setNewTestName(e.target.value)}
+                  placeholder="New test name..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                />
+                <div className="flex items-center mt-2">
+                  <input
+                    id="quiz-mode-check"
+                    type="checkbox"
+                    checked={newCategoryQuizMode}
+                    onChange={(e) => setNewCategoryQuizMode(e.target.checked)}
+                    className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                  />
+                  <label htmlFor="quiz-mode-check" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                    Enable Quiz Mode
+                  </label>
+                </div>
+                <button
+                  type="submit"
+                  className="w-full bg-indigo-600 text-white font-semibold px-4 py-2 rounded-lg mt-2 text-sm hover:bg-indigo-700 transition-colors"
+                >
+                  Add Test
+                </button>
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="w-full bg-gray-600 text-white font-semibold px-4 py-2 rounded-lg mt-4 text-sm hover:bg-gray-700 transition-colors dark:bg-gray-700 dark:hover:bg-gray-600"
+                >
+                  Logout
+                </button>
+              </form>
+              
+              <form onSubmit={handleChangePassword} className="mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <label className="text-sm font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">Change Admin Password</label>
+                <input
+                  id="new-password"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="New password..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                />
+                <input
+                  id="confirm-password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm password..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                />
+                <button
+                  type="submit"
+                  disabled={passwordStatus.type === 'loading'}
+                  className="w-full bg-gray-600 text-white font-semibold px-4 py-2 rounded-lg mt-2 text-sm hover:bg-gray-700 transition-colors dark:bg-gray-700 dark:hover:bg-gray-600 disabled:opacity-50"
+                >
+                  {passwordStatus.type === 'loading' ? 'Saving...' : 'Save Password'}
+                </button>
+                {passwordStatus.message && (
+                  <p className={`text-sm mt-2 ${
+                    passwordStatus.type === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    {passwordStatus.message}
+                  </p>
+                )}
+              </form>
+            </>
+          )}
+        </nav>
+      );
+    }
+
+    // --- Admin: TestManager ---
+    function AdminTestManager({ test, questions, loading, onAddNew, onEdit, onDelete, onExportJson, onImportJson, onToggleQuizMode }) {
+      const quizModeEnabled = test.quizMode;
+
+      return (
+        <div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
+            <h2 className="text-3xl font-bold text-gray-800 mb-2 sm:mb-0 dark:text-gray-100">{test.name}</h2>
+            <div className="flex-shrink-0 flex flex-wrap gap-2">
+              <button onClick={onImportJson} className="flex items-center bg-blue-600 text-white px-3 py-2 rounded-lg shadow-sm font-semibold text-sm hover:bg-blue-700 transition-colors">
+                <IconUpload className="h-4 w-4 mr-2" /> Import
+              </button>
+              <button onClick={onExportJson} className="flex items-center bg-gray-600 text-white px-3 py-2 rounded-lg shadow-sm font-semibold text-sm hover:bg-gray-700 transition-colors">
+                <IconDownload className="h-4 w-4 mr-2" /> Export
+              </button>
+              <button onClick={onAddNew} className="flex items-center bg-indigo-600 text-white px-3 py-2 rounded-lg shadow-sm font-semibold text-sm hover:bg-indigo-700 transition-colors">
+                <IconPlus className="h-4 w-4 mr-2" /> Add Question
+              </button>
+            </div>
+          </div>
+          
+          {/* Quiz Mode Toggle */}
+          <div className="flex items-center space-x-2 mb-6 p-4 bg-white rounded-lg shadow-sm dark:bg-gray-800">
+            <label htmlFor="quiz-mode-toggle" className="font-medium text-gray-700 dark:text-gray-300">
+              Quiz Mode: <span className={`font-bold ${quizModeEnabled ? 'text-green-600' : 'text-red-600'}`}>{quizModeEnabled ? 'ON' : 'OFF'}</span>
+            </label>
+            <button
+              id="quiz-mode-toggle"
+              onClick={() => onToggleQuizMode(test, !quizModeEnabled)}
+              className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${quizModeEnabled ? 'bg-green-500' : 'bg-gray-300'}`}
+            >
+              <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${quizModeEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              (ON: Score at end. OFF: Instant feedback.)
+            </p>
+          </div>
+
+          {loading && <div className="flex justify-center mt-12"><IconLoader className="h-10 w-10 text-indigo-600" /></div>}
+          {!loading && questions.length === 0 && <p className="text-gray-500 italic dark:text-gray-400">No questions found. Click "Add Question" or "Import" to start.</p>}
+          {!loading && questions.length > 0 && (
+            <div className="bg-white rounded-lg shadow-md overflow-hidden dark:bg-gray-800 dark:divide-gray-700">
+              <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                {questions.map(q => <AdminQuestionItem key={q.id} question={q} onEdit={() => onEdit(q)} onDelete={() => onDelete(q.id)} />)}
+              </ul>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // --- Admin: QuestionItem ---
+    function AdminQuestionItem({ question, onEdit, onDelete }) {
+      return (
+        <li className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+          <div className="flex items-start">
+            {question.imageUrl && (
+              <img 
+                src={question.imageUrl} 
+                alt="thumbnail" 
+                className="h-12 w-12 rounded-md object-cover mr-4 flex-shrink-0" 
+                onError={(e) => e.currentTarget.style.display = 'none'}
+              />
+            )}
+            <div className="flex-1">
+              <p className="text-lg font-medium text-gray-900 truncate dark:text-gray-100">{question.question}</p>
+              <p className="text-sm text-gray-500 mt-1 dark:text-gray-400">
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${question.type === 'mc' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'} mr-2`}>
+                  {question.type === 'mc' ? 'MC' : 'Fill'}
+                </span>
+                <strong>Answer:</strong> {question.answer}
+              </p>
+            </div>
+            <div className="flex-shrink-0 flex space-x-2 ml-2">
+              <button onClick={onEdit} className="p-2 text-gray-500 hover:text-indigo-600 rounded-full hover:bg-gray-100 dark:text-gray-400 dark:hover:text-indigo-400 dark:hover:bg-gray-700" aria-label="Edit question"><IconEdit className="h-5 w-5" /></button>
+              <button onClick={onDelete} className="p-2 text-gray-500 hover:text-red-600 rounded-full hover:bg-gray-100 dark:text-gray-400 dark:hover:text-red-400 dark:hover:bg-gray-700" aria-label="Delete question"><IconTrash className="h-5 w-5" /></button>
+            </div>
+          </div>
+        </li>
+      );
+    }
+
+    // --- Admin: QuestionEditorModal ---
+    function AdminQuestionEditorModal({ question, onClose, onSave }) {
+      const [type, setType] = useState(question?.type || 'mc');
+      const [questionText, setQuestionText] = useState(question?.question || '');
+      const [answer, setAnswer] = useState(question?.answer || '');
+      const [options, setOptions] = useState(question?.options || ['', '', '', '']);
+      const [imageUrl, setImageUrl] = useState(question?.imageUrl || '');
+
+      const handleOptionChange = (index, value) => {
+        const newOptions = [...options];
+        newOptions[index] = value;
+        setOptions(newOptions);
+      };
+      const addOption = () => setOptions([...options, '']);
+      const removeOption = (index) => {
+        if (options.length <= 1) return;
+        setOptions(options.filter((_, i) => i !== index));
+      };
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave({
+          question: questionText,
+          type,
+          answer,
+          imageUrl,
+          ...(type === 'mc' && { options: options.filter(opt => opt.trim() !== '') }),
+        });
+      };
+
+      return (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl w-11/12 md:w-2/3 lg:w-1/2 max-h-[90vh] overflow-y-auto dark:bg-gray-800">
+            <form onSubmit={handleSubmit}>
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100">{question ? 'Edit' : 'Add New'} Question</h3>
+                  <button type="button" onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 rounded-full dark:text-gray-400 dark:hover:text-gray-200" aria-label="Close"><IconX className="h-6 w-6" /></button>
+                </div>
+                
+                <div className="mb-4">
+                  <label htmlFor="question-text" className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Question Text</label>
+                  <textarea id="question-text" rows="3" value={questionText} onChange={(e) => setQuestionText(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required></textarea>
+                </div>
+                
+                <div className="mb-4">
+                  <label htmlFor="image-url" className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Optional Image URL</label>
+                  <input id="image-url" type="text" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://example.com/image.png" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                </div>
+
+                <div className="mb-4">
+                  <label htmlFor="question-type" className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Question Type</label>
+                  <select id="question-type" value={type} onChange={(e) => setType(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    <option value="mc">Multiple Choice</option>
+                    <option value="fill">Fill-in-the-Blank</option>
+                  </select>
+                </div>
+
+                {type === 'mc' && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Options</label>
+                    <div className="space-y-2">
+                      {options.map((opt, index) => (
+                        <div key={index} className="flex items-center space-x-2">
+                          <input type="text" placeholder={`Option ${index + 1}`} value={opt} onChange={(e) => handleOptionChange(index, e.target.value)} className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                          <button type="button" onClick={() => removeOption(index)} className="p-1 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300" aria-label="Remove option" disabled={options.length <= 1}><IconTrash className="h-4 w-4" /></button>
+                        </div>
+                      ))}
+                    </div>
+                    <button type="button" onClick={addOption} className="text-sm text-indigo-600 hover:text-indigo-800 font-medium mt-2 dark:text-indigo-400 dark:hover:text-indigo-300">+ Add Option</button>
+                  </div>
+                )}
+
+                <div className="mb-4">
+                  <label htmlFor="answer-text" className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Correct Answer</label>
+                  <input id="answer-text" type="text" value={answer} onChange={(e) => setAnswer(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                  {type === 'mc' && <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">This must exactly match one of the options.</p>}
+                </div>
+              </div>
+              <div className="bg-gray-50 px-6 py-4 flex justify-end space-x-3 dark:bg-gray-700">
+                <button type="button" onClick={onClose} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 font-semibold text-sm hover:bg-gray-50 dark:bg-gray-600 dark:text-gray-200 dark:border-gray-500 dark:hover:bg-gray-500">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-indigo-600 border border-transparent rounded-lg text-white font-semibold text-sm hover:bg-indigo-700">Save Question</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // --- Admin: ConfirmationModal ---
+    function AdminConfirmationModal({ title, message, onConfirm, onCancel, confirmText = "Delete", confirmColor = "bg-red-600 hover:bg-red-700" }) {
+      return (
+        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl w-11/12 md:w-1/3 max-w-sm dark:bg-gray-800">
+            <div className="p-6">
+              <h3 className="text-xl font-bold text-gray-800 mb-2 dark:text-gray-100">{title}</h3>
+              <p className="text-gray-600 dark:text-gray-300">{message}</p>
+            </div>
+            <div className="bg-gray-50 px-6 py-4 flex justify-end space-x-3 dark:bg-gray-700">
+              <button type="button" onClick={onCancel} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 font-semibold text-sm hover:bg-gray-50 dark:bg-gray-600 dark:text-gray-200 dark:border-gray-500 dark:hover:bg-gray-500">Cancel</button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                className={`px-4 py-2 border border-transparent rounded-lg text-white font-semibold text-sm ${confirmColor}`}
+              >
+                {confirmText}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- Admin: JsonExportModal ---
+    function AdminJsonExportModal({ jsonData, onClose }) {
+      const [copySuccess, setCopySuccess] = useState('');
+      const copyToClipboard = () => {
+        const textArea = document.createElement("textarea");
+        textArea.value = jsonData;
+        textArea.style.position = "fixed"; textArea.style.top = "0"; textArea.style.left = "0";
+        document.body.appendChild(textArea);
+        textArea.focus(); textArea.select();
+        try {
+          setCopySuccess(document.execCommand('copy') ? 'Copied!' : 'Failed.');
+        } catch (err) { setCopySuccess('Failed.'); }
+        document.body.removeChild(textArea);
+        setTimeout(() => setCopySuccess(''), 2000);
+      };
+      
+      return (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl w-11/12 md:w-2/3 lg:w-1/2 max-h-[90vh] flex flex-col dark:bg-gray-800">
+            <div className="p-6 flex items-center justify-between border-b dark:border-gray-700">
+              <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Export Test to JSON</h3>
+              <button type="button" onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 rounded-full dark:text-gray-400 dark:hover:text-gray-200" aria-label="Close"><IconX className="h-6 w-6" /></button>
+            </div>
+            <div className="p-6 overflow-y-auto">
+              <pre className="bg-gray-100 p-4 rounded-lg text-sm overflow-x-auto dark:bg-gray-900 dark:text-gray-300">{jsonData}</pre>
+            </div>
+            <div className="bg-gray-50 px-6 py-4 flex justify-between items-center dark:bg-gray-700">
+              <span className="text-sm text-green-600 dark:text-green-400 font-medium">{copySuccess}</span>
+              <button type="button" onClick={copyToClipboard} className="px-4 py-2 bg-indigo-600 border border-transparent rounded-lg text-white font-semibold text-sm hover:bg-indigo-700">Copy to Clipboard</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- Admin: JsonImportModal ---
+    function AdminJsonImportModal({ onClose, onImport }) {
+      const [jsonString, setJsonString] = useState('');
+
+      const handleSubmit = () => {
+        onImport(jsonString);
+        // If validation fails, the parent will show an error and this modal
+        // will stay open. If it succeeds, the parent will close this modal
+        // and open the confirmation modal.
+      };
+      
+      return (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl w-11/11 md:w-2/3 lg:w-1/2 max-h-[90vh] flex flex-col dark:bg-gray-800">
+            <div className="p-6 flex items-center justify-between border-b dark:border-gray-700">
+              <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Import Questions from JSON</h3>
+              <button type="button" onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 rounded-full dark:text-gray-400 dark:hover:text-gray-200" aria-label="Close"><IconX className="h-6 w-6" /></button>
+            </div>
+            <div className="p-6 overflow-y-auto">
+              <p className="text-sm text-gray-600 mb-2 dark:text-gray-300">Paste your JSON array of questions below. This will <strong className="text-red-600 dark:text-red-400">overwrite all existing questions</strong> in this test.</p>
+              <pre className="text-xs text-gray-500 bg-gray-100 p-2 rounded mb-2 dark:bg-gray-900 dark:text-gray-400">
+                {`[
+  { "question": "...", "answer": "...", "type": "mc", "options": ["..."], "imageUrl": "..." },
+  { "question": "...", "answer": "...", "type": "fill", "imageUrl": "..." }
+]`}
+              </pre>
+              <textarea
+                value={jsonString}
+                onChange={(e) => setJsonString(e.target.value)}
+                placeholder="Paste JSON array here..."
+                className="w-full h-48 border border-gray-300 rounded-lg p-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              />
+            </div>
+            <div className="bg-gray-50 px-6 py-4 flex justify-end items-center space-x-3 dark:bg-gray-700">
+              <button type="button" onClick={onClose} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 font-semibold text-sm hover:bg-gray-50 dark:bg-gray-600 dark:text-gray-200 dark:border-gray-500 dark:hover:bg-gray-500">Cancel</button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!jsonString}
+                className="px-4 py-2 bg-blue-600 border border-transparent rounded-lg text-white font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 flex items-center"
+              >
+                <IconUpload className="h-4 w-4 mr-2" />
+                Validate & Import
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- Mount the App ---
+    // Note: Using the modern createRoot API
+    const rootElement = document.getElementById('root');
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(<App />);
+
+  </script>
+</body>
+</html>
