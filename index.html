@@ -38,6 +38,16 @@
     .group:hover .group-hover\:opacity-100 {
       opacity: 1;
     }
+    
+    /* Style for the drag-over visual cue */
+    .drag-over-indicator {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background-color: #6366F1; /* indigo-500 */
+      top: -1px;
+    }
   </style>
 </head>
 <body class="bg-gray-100">
@@ -56,7 +66,7 @@
       doc, 
       addDoc,
       setDoc, 
-      getDoc, // Import getDoc
+      getDoc,
       updateDoc,
       deleteDoc, 
       onSnapshot, 
@@ -339,7 +349,8 @@
       // --- Fetch Tests ---
       useEffect(() => {
         const testsCol = collection(db, dataBasePath, 'tests');
-        const unsub = onSnapshot(testsCol, (snapshot) => {
+        // Fetch tests in order
+        const unsub = onSnapshot(query(testsCol, orderBy("order", "asc")), (snapshot) => {
           const cats = [];
           snapshot.forEach(doc => {
             cats.push({ id: doc.id, ...doc.data() });
@@ -347,9 +358,24 @@
           setTests(cats);
           setLoading(false);
         }, (err) => {
-          console.error("Error fetching tests:", err);
-          setError("Failed to load tests.");
-          setLoading(false);
+          console.error("Error fetching tests (students):", err);
+          // Fallback to fetching without order if index is missing/first time
+          if (err.code === 'failed-precondition' || err.code === 'invalid-argument') {
+            const unsubFallback = onSnapshot(testsCol, (fallbackSnapshot) => {
+              const cats = [];
+              fallbackSnapshot.forEach(doc => cats.push({ id: doc.id, ...doc.data() }));
+              setTests(cats);
+              setLoading(false);
+            }, (fallbackErr) => {
+              console.error("Error fetching tests fallback:", fallbackErr);
+              setError("Failed to load tests.");
+              setLoading(false);
+            });
+            return () => unsubFallback();
+          } else {
+            setError("Failed to load tests.");
+            setLoading(false);
+          }
         });
         return () => unsub();
       }, [dataBasePath]);
@@ -366,7 +392,9 @@
               newQuestions.push({ id: doc.id, ...doc.data() });
             });
             setQuestions(newQuestions);
-            setUserAnswers({});
+            // Load saved answers from localStorage
+            const savedAnswers = localStorage.getItem(`qs-progress-${selectedTest.id}`);
+            setUserAnswers(savedAnswers ? JSON.parse(savedAnswers) : {});
             setLoading(false);
           }).catch(err => {
             console.error("Error fetching questions:", err);
@@ -384,9 +412,15 @@
       const handleQuizComplete = (answers) => {
         setUserAnswers(answers);
         setQuizState('completed');
+        // Clear saved progress on completion
+        localStorage.removeItem(`qs-progress-${selectedTest.id}`);
       };
 
       const handleReset = () => {
+        // Clear saved progress on reset
+        if(selectedTest) {
+          localStorage.removeItem(`qs-progress-${selectedTest.id}`);
+        }
         setQuizState('selecting');
         setSelectedTest(null);
         setQuestions([]);
@@ -406,7 +440,7 @@
       }
 
       return (
-        <div className="max-w-4xl mx-auto p-4 md:p-8">
+        <div className="max-w-7xl mx-auto p-4 md:p-8">
           {quizState === 'selecting' && (
             <TestSelector tests={tests} onSelect={handleStartQuiz} />
           )}
@@ -414,6 +448,7 @@
             <QuizView
               test={selectedTest}
               questions={questions}
+              initialAnswers={userAnswers}
               onComplete={handleQuizComplete}
               onBack={handleReset}
             />
@@ -463,108 +498,161 @@
         </div>
       );
     }
+    
+    // --- Student: QuestionNav ---
+    function QuestionNav({
+      questions,
+      answers,
+      currentQuestionIndex,
+      onSelectQuestion,
+      onFinish,
+      onBack,
+      reviewMode = false
+    }) {
+      const answeredCount = Object.keys(answers).length;
+      const allAnswered = answeredCount === questions.length;
+
+      const getButtonClass = (index, q) => {
+        const isCurrent = index === currentQuestionIndex;
+        let baseClass = `w-10 h-10 flex items-center justify-center rounded-full font-semibold transition-colors `;
+        
+        if (reviewMode) {
+          const userAnswer = answers[q.id] || "No Answer";
+          const isCorrect = q.type === 'fill'
+            ? (userAnswer || '').trim().toLowerCase() === (q.answer || '').trim().toLowerCase()
+            : userAnswer === q.answer;
+          
+          if (isCurrent) {
+            return baseClass + (isCorrect ? 'bg-green-600 text-white ring-2 ring-offset-2 ring-green-500 dark:ring-offset-gray-800' : 'bg-red-600 text-white ring-2 ring-offset-2 ring-red-500 dark:ring-offset-gray-800');
+          }
+          return baseClass + (isCorrect ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300');
+        }
+
+        // --- Quiz Taking Mode ---
+        const isAnswered = answers[q.id] !== undefined;
+        if (isCurrent) {
+          return baseClass + (isAnswered ? 'bg-indigo-600 text-white ring-2 ring-offset-2 ring-indigo-500 dark:ring-offset-gray-800' : 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-300 ring-2 ring-indigo-500');
+        }
+        if (isAnswered) {
+          return baseClass + 'bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600';
+        }
+        return baseClass + 'bg-white hover:bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-500';
+      };
+
+      return (
+        <div className="w-full md:w-64 flex-shrink-0 p-4 bg-white rounded-lg shadow-xl dark:bg-gray-800 md:h-[calc(100vh-128px)] md:overflow-y-auto">
+          <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-700 flex items-center mb-4 dark:text-gray-400 dark:hover:text-gray-200">
+            <IconChevronLeft className="h-4 w-4 mr-1" />
+            Back to Tests
+          </button>
+          <h3 className="font-semibold text-lg mb-4 dark:text-gray-100">Questions</h3>
+          <div className="flex flex-wrap gap-2">
+            {questions.map((q, index) => (
+              <button
+                key={q.id}
+                onClick={() => onSelectQuestion(index)}
+                className={getButtonClass(index, q)}
+              >
+                {index + 1}
+              </button>
+            ))}
+          </div>
+
+          {!reviewMode && (
+            <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <p className="text-sm font-medium text-center text-gray-600 dark:text-gray-300 mb-2">
+                {answeredCount} / {questions.length} Answered
+              </p>
+              <button
+                onClick={onFinish}
+                disabled={!allAnswered}
+                className="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Finish Quiz
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
 
     // --- Student: QuizView ---
-    function QuizView({ test, questions, onComplete, onBack }) {
+    function QuizView({ test, questions, initialAnswers, onComplete, onBack }) {
       const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-      const [answers, setAnswers] = useState({});
-      const [showFeedback, setShowFeedback] = useState(false);
+      const [answers, setAnswers] = useState(initialAnswers);
+      
+      // Save progress to localStorage
+      useEffect(() => {
+        localStorage.setItem(`qs-progress-${test.id}`, JSON.stringify(answers));
+      }, [answers, test.id]);
 
       const handleAnswer = (questionId, answer) => {
         setAnswers(prev => ({ ...prev, [questionId]: answer }));
       };
 
-      const handleNext = () => {
-        if (!test.quizMode) {
-          // Practice Mode Logic
-          if (!showFeedback) {
-            // First click: Show feedback
-            setShowFeedback(true); 
-          } else {
-            // Second click: Move to next question
-            setShowFeedback(false);
-            if (currentQuestionIndex < questions.length - 1) {
-              setCurrentQuestionIndex(prev => prev + 1);
-            }
-          }
-        } else {
-          // Quiz Mode Logic (original)
-          if (currentQuestionIndex < questions.length - 1) {
-            setCurrentQuestionIndex(prev => prev + 1);
-          }
-        }
-      };
-
       const handleSubmit = () => {
-        if (!test.quizMode && !showFeedback) {
-          // Practice mode, final question, first click
-          setShowFeedback(true);
-        } else {
-          // Quiz mode OR Practice mode after feedback
-          onComplete(answers);
-        }
+        onComplete(answers);
       };
+      
+      const handleBack = () => {
+        // Clear progress when intentionally going back
+        localStorage.removeItem(`qs-progress-${test.id}`);
+        onBack();
+      }
       
       const currentQuestion = questions[currentQuestionIndex];
 
       return (
-        <div className="bg-white p-6 rounded-lg shadow-xl max-w-2xl mx-auto dark:bg-gray-800">
-          <div className="flex justify-between items-center mb-4">
-            <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-700 flex items-center dark:text-gray-400 dark:hover:text-gray-200">
-              <IconChevronLeft className="h-4 w-4 mr-1" />
-              Back to Tests
-            </button>
-            <span className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+        <div className="flex flex-col md:flex-row gap-6">
+          <QuestionNav
+            questions={questions}
+            answers={answers}
+            currentQuestionIndex={currentQuestionIndex}
+            onSelectQuestion={setCurrentQuestionIndex}
+            onFinish={handleSubmit}
+            onBack={handleBack}
+          />
+          <div className="flex-1 bg-white p-6 rounded-lg shadow-xl max-w-2xl mx-auto dark:bg-gray-800 w-full">
+            <span className="text-sm font-semibold text-gray-600 dark:text-gray-300 mb-4 block">
               Question {currentQuestionIndex + 1} of {questions.length}
             </span>
-          </div>
-          
-          <QuestionCard
-            key={currentQuestion.id}
-            question={currentQuestion}
-            isQuizMode={test.quizMode}
-            userAnswer={answers[currentQuestion.id] || null}
-            onAnswer={(answer) => handleAnswer(currentQuestion.id, answer)}
-            showFeedback={showFeedback}
-          />
-
-          <div className="mt-6 flex justify-between items-center">
-            <span className="text-sm text-gray-500 dark:text-gray-400">{test.quizMode ? "Answer will be shown at the end." : (showFeedback ? "Click Next to continue." : "Select an answer.")}</span>
-            {currentQuestionIndex < questions.length - 1 ? (
-              <button
-                onClick={handleNext}
-                disabled={!answers[currentQuestion.id] && test.quizMode} // Disable if no answer in quiz mode
-                className="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {test.quizMode ? 'Next' : (showFeedback ? 'Next' : 'Check Answer')}
-              </button>
-            ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={!answers[currentQuestion.id] && test.quizMode}
-                className="px-6 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50"
-              >
-                {test.quizMode ? 'Finish Quiz' : (showFeedback ? 'Finish Quiz' : 'Check Answer')}
-              </button>
-            )}
+            
+            <QuestionCard
+              key={currentQuestion.id}
+              question={currentQuestion}
+              isQuizMode={test.quizMode}
+              userAnswer={answers[currentQuestion.id] || null}
+              onAnswer={(answer) => handleAnswer(currentQuestion.id, answer)}
+            />
           </div>
         </div>
       );
     }
 
     // --- Student: QuestionCard ---
-    function QuestionCard({ question, isQuizMode, userAnswer, onAnswer, showFeedback }) {
+    function QuestionCard({ question, isQuizMode, userAnswer, onAnswer }) {
       const [selected, setSelected] = useState(null);
+      const [feedback, setFeedback] = useState(null); // 'correct' or 'incorrect'
 
       useEffect(() => {
-        // Reset local state when question changes
+        // Reset local state when question changes or answer is loaded
         setSelected(userAnswer);
-      }, [question, userAnswer]);
+        setFeedback(null);
+        if (!isQuizMode && userAnswer) {
+          setFeedback(userAnswer === question.answer ? 'correct' : 'incorrect');
+        }
+      }, [question, userAnswer, isQuizMode]);
 
       const handleSelect = (answer) => {
-        if (showFeedback && !isQuizMode) return; // Don't allow change after feedback shown
+        if (feedback && !isQuizMode) return; // Don't allow change after feedback shown
+        
         setSelected(answer);
         onAnswer(answer);
+        
+        if (!isQuizMode) {
+          setFeedback(answer === question.answer ? 'correct' : 'incorrect');
+        }
       };
 
       const getButtonClass = (option) => {
@@ -575,7 +663,7 @@
         }
         
         // Practice Mode
-        if (showFeedback) {
+        if (feedback) {
           if (option === question.answer) return 'bg-green-500 text-white dark:bg-green-600';
           if (option === selected && option !== question.answer) return 'bg-red-500 text-white dark:bg-red-600';
           return 'bg-white opacity-50 cursor-not-allowed dark:bg-gray-800 dark:opacity-40';
@@ -604,7 +692,7 @@
                 <button
                   key={index}
                   onClick={() => handleSelect(opt)}
-                  disabled={showFeedback && !isQuizMode}
+                  disabled={feedback && !isQuizMode}
                   className={`w-full text-left p-4 rounded-lg border border-gray-300 dark:border-gray-600 font-medium transition-colors ${getButtonClass(opt)}`}
                 >
                   {opt}
@@ -616,18 +704,18 @@
               type="text"
               value={selected || ''}
               onChange={(e) => handleSelect(e.target.value)}
-              disabled={showFeedback && !isQuizMode}
+              disabled={feedback && !isQuizMode}
               placeholder="Type your answer here..."
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
             />
           )}
 
-          {!isQuizMode && showFeedback && (selected === question.answer) && (
+          {!isQuizMode && feedback === 'correct' && (
             <div className="mt-4 p-3 rounded-lg bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 font-medium">
               Correct! The answer is {question.answer}.
             </div>
           )}
-          {!isQuizMode && showFeedback && (selected !== question.answer) && (
+          {!isQuizMode && feedback === 'incorrect' && (
             <div className="mt-4 p-3 rounded-lg bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 font-medium">
               Incorrect. The correct answer is {question.answer}.
             </div>
@@ -690,78 +778,100 @@
 
     // --- Student: QuizReview ---
     function QuizReview({ questions, userAnswers, onComplete }) {
+      const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+      
+      const handleBack = () => {
+        onComplete(); // onComplete is the "reset" function
+      }
+      
+      const currentQuestion = questions[currentQuestionIndex];
+      if (!currentQuestion) {
+        return (
+          <div className="bg-white p-6 rounded-lg shadow-xl max-w-2xl mx-auto dark:bg-gray-800">
+             <h2 className="text-3xl font-bold text-gray-800 mb-6 dark:text-gray-100">Review Answers</h2>
+             <p className="dark:text-gray-300">No questions to review.</p>
+             <button
+              onClick={onComplete}
+              className="w-full mt-8 px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              Back to Tests
+            </button>
+          </div>
+        );
+      }
+      
+      const userAnswer = userAnswers[currentQuestion.id] || "No Answer";
+      const isCorrect = currentQuestion.type === 'fill'
+        ? (userAnswer || '').trim().toLowerCase() === (currentQuestion.answer || '').trim().toLowerCase()
+        : userAnswer === currentQuestion.answer;
+
       return (
-        <div className="bg-white p-6 rounded-lg shadow-xl max-w-2xl mx-auto dark:bg-gray-800">
-          <h2 className="text-3xl font-bold text-gray-800 mb-6 dark:text-gray-100">Review Answers</h2>
-          <div className="space-y-6">
-            {questions.map((q, index) => {
-              const userAnswer = userAnswers[q.id] || "No Answer";
-              const isCorrect = q.type === 'fill'
-                ? (userAnswer || '').trim().toLowerCase() === (q.answer || '').trim().toLowerCase()
-                : userAnswer === q.answer;
+        <div className="flex flex-col md:flex-row gap-6">
+          <QuestionNav
+            questions={questions}
+            answers={userAnswers}
+            currentQuestionIndex={currentQuestionIndex}
+            onSelectQuestion={setCurrentQuestionIndex}
+            onBack={handleBack}
+            reviewMode={true}
+          />
+          <div className="flex-1 bg-white p-6 rounded-lg shadow-xl max-w-2xl mx-auto dark:bg-gray-800 w-full">
+            <h2 className="text-3xl font-bold text-gray-800 mb-6 dark:text-gray-100">Reviewing Question {currentQuestionIndex + 1}</h2>
+            
+            <div className={`p-4 rounded-lg border ${isCorrect ? 'border-green-300 bg-green-50 dark:bg-green-900/50 dark:border-green-700' : 'border-red-300 bg-red-50 dark:bg-red-900/50 dark:border-red-700'}`}>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">
+                {currentQuestion.question}
+              </p>
+              {currentQuestion.imageUrl && (
+                <img 
+                  src={currentQuestion.imageUrl} 
+                  alt="Question visual" 
+                  className="rounded-lg my-2 max-h-40 object-contain"
+                  onError={(e) => e.currentTarget.style.display = 'none'}
+                />
+              )}
               
-              return (
-                <div key={q.id} className={`p-4 rounded-lg border ${isCorrect ? 'border-green-300 bg-green-50 dark:bg-green-900/50 dark:border-green-700' : 'border-red-300 bg-red-50 dark:bg-red-900/50 dark:border-red-700'}`}>
-                  <p className="font-semibold text-gray-800 dark:text-gray-100">
-                    {index + 1}. {q.question}
-                  </p>
-                  {q.imageUrl && (
-                    <img 
-                      src={q.imageUrl} 
-                      alt="Question visual" 
-                      className="rounded-lg my-2 max-h-40 object-contain"
-                      onError={(e) => e.currentTarget.style.display = 'none'}
-                    />
-                  )}
-                  
-                  {/* New Review Logic */}
-                  {q.type === 'mc' ? (
-                    <div className="mt-3 space-y-2">
-                      {q.options.map((option, optIndex) => {
-                        const isCorrectAnswer = option === q.answer;
-                        const isUserAnswer = option === userAnswer;
-                        let optionClass = "p-3 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-700";
-                        
-                        if (isCorrectAnswer) {
-                          optionClass = "p-3 rounded-lg border border-green-500 bg-green-100 dark:bg-green-900 dark:border-green-700 text-green-800 dark:text-green-200 font-medium";
-                        } else if (isUserAnswer && !isCorrect) {
-                          optionClass = "p-3 rounded-lg border border-red-500 bg-red-100 dark:bg-red-900 dark:border-red-700 text-red-800 dark:text-red-300 font-medium";
-                        }
-                        
-                        return (
-                          <div key={optIndex} className={optionClass}>
-                            {option}
-                            {isCorrectAnswer && <span className="text-xs font-bold ml-2">(Correct Answer)</span>}
-                            {isUserAnswer && !isCorrect && <span className="text-xs font-bold ml-2">(Your Answer)</span>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    // Fill-in-the-blank review
-                    <div className="mt-3 space-y-2">
-                      <div className={`p-3 rounded-lg border ${isCorrect ? 'border-green-500 bg-green-100 dark:bg-green-900' : 'border-red-500 bg-red-100 dark:bg-red-900'}`}>
-                        <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Your Answer: </span>
-                        <span className={`font-semibold ${isCorrect ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>{userAnswer}</span>
+              {/* Review Logic */}
+              {currentQuestion.type === 'mc' ? (
+                <div className="mt-3 space-y-2">
+                  {currentQuestion.options.map((option, optIndex) => {
+                    const isCorrectAnswer = option === currentQuestion.answer;
+                    const isUserAnswer = option === userAnswer;
+                    let optionClass = "p-3 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-700";
+                    
+                    if (isCorrectAnswer) {
+                      optionClass = "p-3 rounded-lg border border-green-500 bg-green-100 dark:bg-green-900 dark:border-green-700 text-green-800 dark:text-green-200 font-medium";
+                    } else if (isUserAnswer && !isCorrect) {
+                      optionClass = "p-3 rounded-lg border border-red-500 bg-red-100 dark:bg-red-900 dark:border-red-700 text-red-800 dark:text-red-300 font-medium";
+                    }
+                    
+                    return (
+                      <div key={optIndex} className={optionClass}>
+                        {option}
+                        {isCorrectAnswer && <span className="text-xs font-bold ml-2">(Correct Answer)</span>}
+                        {isUserAnswer && !isCorrect && <span className="text-xs font-bold ml-2">(Your Answer)</span>}
                       </div>
-                      {!isCorrect && (
-                         <div className="p-3 rounded-lg border border-green-500 bg-green-100 dark:bg-green-900">
-                          <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Correct Answer: </span>
-                          <span className="font-semibold text-green-700 dark:text-green-300">{q.answer}</span>
-                        </div>
-                      )}
+                    );
+                  })}
+                </div>
+              ) : (
+                // Fill-in-the-blank review
+                <div className="mt-3 space-y-2">
+                  <div className={`p-3 rounded-lg border ${isCorrect ? 'border-green-500 bg-green-100 dark:bg-green-900' : 'border-red-500 bg-red-100 dark:bg-red-900'}`}>
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Your Answer: </span>
+                    <span className={`font-semibold ${isCorrect ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>{userAnswer}</span>
+                  </div>
+                  {!isCorrect && (
+                     <div className="p-3 rounded-lg border border-green-500 bg-green-100 dark:bg-green-900">
+                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Correct Answer: </span>
+                      <span className="font-semibold text-green-700 dark:text-green-300">{currentQuestion.answer}</span>
                     </div>
                   )}
                 </div>
-              );
-            })}
+              )}
+            </div>
+            
           </div>
-          <button
-            onClick={onComplete}
-            className="w-full mt-8 px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            Back to Tests
-          </button>
         </div>
       );
     }
@@ -795,20 +905,98 @@
       useEffect(() => {
         if (!isAuthReady) return;
         setLoading(prev => ({ ...prev, tests: true }));
-        const unsub = onSnapshot(testsCol, (snapshot) => {
+        
+        const unsub = onSnapshot(query(testsCol, orderBy("order", "asc")), async (snapshot) => {
           const cats = [];
-          snapshot.forEach(doc => {
-            cats.push({ id: doc.id, ...doc.data() });
+          let needsMigration = false;
+          let maxOrder = -1;
+          
+          snapshot.forEach((doc) => {
+            const data = doc.data();
+            if (data.order === undefined) {
+              needsMigration = true;
+            } else {
+              maxOrder = Math.max(maxOrder, data.order);
+            }
+            cats.push({ id: doc.id, ...data });
           });
-          setTests(cats);
-          setLoading(prev => ({ ...prev, tests: false }));
+
+          if (needsMigration) {
+            console.log("Running one-time order migration for tests...");
+            try {
+              const batch = writeBatch(db);
+              // We need to get *all* tests, not just the ordered ones, for a clean migration
+              const allTestsSnap = await getDocs(testsCol);
+              const allTests = [];
+              allTestsSnap.forEach(doc => allTests.push({ id: doc.id, ...doc.data() }));
+
+              // Sort by existing order, putting undefined ones at the end
+              allTests.sort((a, b) => {
+                if (a.order === undefined && b.order === undefined) return 0;
+                if (a.order === undefined) return 1;
+                if (b.order === undefined) return -1;
+                return a.order - b.order;
+              });
+              
+              allTests.forEach((test, index) => {
+                const testRef = doc(db, testsCol.path, test.id);
+                batch.update(testRef, { order: index });
+              });
+              
+              await batch.commit();
+              console.log("Migration complete. Snapshot will refire.");
+              // Don't setLoading or setTests; let the snapshot refire
+            } catch (migrateError) {
+              console.error("Failed to migrate test order:", migrateError);
+              setError("Failed to update test order. Please refresh.");
+              setTests(cats); // Set with potentially wrong order
+              setLoading(prev => ({ ...prev, tests: false }));
+            }
+          } else {
+            setTests(cats);
+            setLoading(prev => ({ ...prev, tests: false }));
+          }
         }, (err) => {
-          console.error("Error fetching tests:", err);
-          setError("Failed to load tests.");
-          setLoading(prev => ({ ...prev, tests: false }));
+          // This handles the case where the 'order' field doesn't exist on *any* document,
+          // or the collection is empty.
+          if (err.code === 'failed-precondition' || err.code === 'invalid-argument') {
+            console.log("Attempting to fetch without order to run migration...");
+            const unsubFallback = onSnapshot(testsCol, async (fallbackSnapshot) => {
+              const cats = [];
+              fallbackSnapshot.forEach(doc => cats.push({ id: doc.id, ...doc.data() }));
+
+              if (cats.length > 0) {
+                console.log("Running initial order migration...");
+                try {
+                  const batch = writeBatch(db);
+                  cats.forEach((test, index) => {
+                    const testRef = doc(db, testsCol.path, test.id);
+                    batch.update(testRef, { order: index });
+                  });
+                  await batch.commit();
+                  console.log("Initial migration complete. Snapshot will refire.");
+                  // Let snapshot refire
+                } catch (migrateError) {
+                  console.error("Failed to run initial migration:", migrateError);
+                  setError("Failed to initialize test order. Please refresh.");
+                  setTests(cats); // Show unordered
+                }
+              } else {
+                setTests([]); // No tests, nothing to migrate
+              }
+              setLoading(prev => ({ ...prev, tests: false }));
+            });
+            return () => unsubFallback();
+          } else {
+            console.error("Error fetching tests:", err);
+            setError("Failed to load tests.");
+            setLoading(prev => ({ ...prev, tests: false }));
+          }
         });
+
         return () => unsub();
       }, [isAuthReady, testsCol]);
+
 
       // --- Fetch Admin Questions (when test changes) ---
       useEffect(() => {
@@ -838,7 +1026,12 @@
       const handleAddTest = async (name, quizMode) => {
         if (!name.trim()) return;
         try {
-          await addDoc(testsCol, { name: name.trim(), quizMode: quizMode });
+          // Add with order = tests.length to put it at the end
+          await addDoc(testsCol, { 
+            name: name.trim(), 
+            quizMode: quizMode, 
+            order: tests.length 
+          });
         } catch (e) { console.error("Error adding test:", e); setError("Failed to add test."); }
       };
       
@@ -882,6 +1075,26 @@
         } finally {
           setLoading(prev => ({ ...prev, tests: false }));
           setDeletingTest(null);
+        }
+      };
+      
+      // --- Reorder Tests ---
+      const handleReorderTests = async (newTests) => {
+        // Set local state immediately for snappy UI
+        setTests(newTests);
+        
+        // Update Firestore in the background
+        try {
+          const batch = writeBatch(db);
+          newTests.forEach((test, index) => {
+            const testRef = doc(db, testsCol.path, test.id);
+            batch.update(testRef, { order: index });
+          });
+          await batch.commit();
+        } catch (reorderError) {
+          console.error("Failed to save new test order:", reorderError);
+          setError("Failed to save new order. Please refresh.");
+          // Note: The UI is now out of sync with DB. Refresh is the safest option.
         }
       };
 
@@ -1036,11 +1249,12 @@
             selectedTest={selectedTest}
             onSelectTest={setSelectedTest}
             onAddTest={handleAddTest}
-            onDeleteTest={openDeleteTestModal} // Pass delete handler
+            onDeleteTest={openDeleteTestModal}
+            onReorderTests={handleReorderTests} // Pass reorder handler
             loading={loading.tests}
             authReady={isAuthReady}
             onLogout={onLogout}
-            settingsBasePath={settingsBasePath} // Pass settings path
+            settingsBasePath={settingsBasePath}
           />
           <main className="flex-1 overflow-y-auto p-4 md:p-8">
             {error && (
@@ -1076,7 +1290,7 @@
           {isDeleteTestModalOpen && (
             <AdminConfirmationModal 
               title="Delete Test?" 
-              message={`Are you sure you want to delete the test "${deletingTest?.name}"? This will also delete ALL ${questions.length} questions inside it. This action cannot be undone.`} 
+              message={`Are you sure you want to delete the test "${deletingTest?.name}"? This will also delete ALL associated questions. This action cannot be undone.`} 
               onConfirm={handleDeleteTest} 
               onCancel={() => setIsDeleteTestModalOpen(false)} 
             />
@@ -1101,13 +1315,17 @@
     }
 
     // --- Admin: Sidebar ---
-    function AdminSidebar({ tests, selectedTest, onSelectTest, onAddTest, onDeleteTest, loading, authReady, onLogout, settingsBasePath }) {
+    function AdminSidebar({ tests, selectedTest, onSelectTest, onAddTest, onDeleteTest, onReorderTests, loading, authReady, onLogout, settingsBasePath }) {
       const [newTestName, setNewTestName] = useState('');
       const [newCategoryQuizMode, setNewCategoryQuizMode] = useState(false);
       
       const [newPassword, setNewPassword] = useState('');
       const [confirmPassword, setConfirmPassword] = useState('');
       const [passwordStatus, setPasswordStatus] = useState({ message: '', type: '' }); // 'success' or 'error'
+      
+      // D&D State
+      const [draggedId, setDraggedId] = useState(null);
+      const [dragOverId, setDragOverId] = useState(null);
 
       const handleSubmit = (e) => {
         e.preventDefault();
@@ -1143,20 +1361,78 @@
           }
         };
 
+      // --- D&D Handlers ---
+      const handleDragStart = (e, id) => {
+        setDraggedId(id);
+        e.dataTransfer.effectAllowed = 'move';
+      };
+
+      const handleDragOver = (e, id) => {
+        e.preventDefault();
+        if (id !== dragOverId) {
+          setDragOverId(id);
+        }
+      };
+
+      const handleDragLeave = () => {
+        setDragOverId(null);
+      };
+
+      const handleDrop = (e, targetId) => {
+        e.preventDefault();
+        if (draggedId === targetId || !draggedId) return; // Dropped on itself or invalid drag
+        
+        const newTests = [...tests];
+        const draggedTest = newTests.find(t => t.id === draggedId);
+        const targetIndex = newTests.findIndex(t => t.id === targetId);
+        
+        // Remove dragged test from its original position
+        const draggedIndex = newTests.findIndex(t => t.id === draggedId);
+        newTests.splice(draggedIndex, 1);
+        
+        // Insert it at the target position
+        newTests.splice(targetIndex, 0, draggedTest);
+        
+        // Pass the newly ordered array up to AdminView to handle DB update
+        onReorderTests(newTests);
+        
+        setDraggedId(null);
+        setDragOverId(null);
+      };
+      
+      const handleDragEnd = () => {
+        setDraggedId(null);
+        setDragOverId(null);
+      };
+
       return (
         <nav className="w-full md:w-64 lg:w-72 bg-white border-r border-gray-200 p-4 flex-shrink-0 overflow-y-auto dark:bg-gray-800 dark:border-gray-700">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2 dark:text-gray-400">Tests</h2>
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2 dark:text-gray-400">Tests (Drag to Reorder)</h2>
           {loading && <IconLoader className="h-5 w-5 text-gray-400" />}
-          <ul className="space-y-1 mb-6">
+          <ul 
+            className="space-y-1 mb-6"
+            onDragLeave={handleDragLeave}
+          >
             {tests.map(test => (
-              <li key={test.id} className="group flex items-center justify-between">
+              <li 
+                key={test.id} 
+                className="group flex items-center justify-between relative" // Added relative
+                draggable="true"
+                onDragStart={(e) => handleDragStart(e, test.id)}
+                onDragOver={(e) => handleDragOver(e, test.id)}
+                onDrop={(e) => handleDrop(e, test.id)}
+                onDragEnd={handleDragEnd}
+              >
+                {/* Visual drag-over indicator */}
+                {dragOverId === test.id && <div className="drag-over-indicator"></div>}
+                
                 <button
                   onClick={() => onSelectTest(test)}
                   className={`flex-1 text-left px-3 py-2 rounded-lg truncate ${
                     selectedTest?.id === test.id
                       ? 'bg-indigo-100 text-indigo-700 font-semibold dark:bg-indigo-900 dark:text-indigo-300'
                       : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
-                  }`}
+                  } ${draggedId === test.id ? 'opacity-50' : ''}`} // Style the item being dragged
                 >
                   {test.name}
                   {test.quizMode && <span className="ml-2 text-xs bg-indigo-200 text-indigo-800 dark:bg-indigo-800 dark:text-indigo-200 px-1.5 py-0.5 rounded-full">Quiz</span>}
