@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Qs - Quiz Platform</title>
+    <title>QS - Quiz Platform</title>
 
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -363,6 +363,24 @@
         </svg>
       );
 
+      const IconChevronsLeft = ({ className }) => (
+        <svg
+          className={className}
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="11 17 6 12 11 7"></polyline>
+          <polyline points="18 17 13 12 18 7"></polyline>
+        </svg>
+      );
+
       // --- Firebase Initialization and Auth ---
       // User-provided Firebase config
       const firebaseConfig = {
@@ -374,7 +392,6 @@
         appId: "1:196222599386:web:f48ec04c166def41cd65e3",
         measurementId: "G-DQ1FRLSF6H",
       };
-
       const appId = firebaseConfig.projectId || "default-app-id"; // Use projectId as the appId
       const initialAuthToken = null; // This is not needed for GitHub Pages deployment
 
@@ -878,6 +895,7 @@
         };
 
         const handleStartQuiz = (test) => {
+          setLoading(true);
           setSelectedTest(test);
           setQuizState("in_progress");
         };
@@ -981,6 +999,7 @@
                 </p>
               )}
               {tests.map((test) => {
+                if (!test) return null; // Add a guard for undefined tests
                 const questionCount = test.questionCount || 0;
                 const savedCount = progress[test.id] || 0;
                 const progressPercent =
@@ -991,10 +1010,7 @@
                     key={test.id}
                     className="bg-white rounded-lg shadow-md text-left dark:bg-gray-800 flex flex-col"
                   >
-                    <button
-                      onClick={() => onSelect(test)}
-                      className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex-1"
-                    >
+                    <div className="p-6 flex-1">
                       <h3 className="text-xl font-semibold text-indigo-600 dark:text-indigo-400">
                         {test.name}
                       </h3>
@@ -1003,7 +1019,43 @@
                           ? "Quiz Mode: Graded at the end"
                           : "Practice Mode: Instant feedback"}
                       </p>
-                    </button>
+                      {/* Progress Bar */}
+                      <div className="mt-4">
+                        <div className="flex justify-between text-sm font-medium text-gray-600 dark:text-gray-400">
+                          <span>Progress</span>
+                          <span>
+                            {savedCount} / {questionCount}
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2.5 mt-1 dark:bg-gray-700">
+                          <div
+                            className="bg-indigo-600 h-2.5 rounded-full"
+                            style={{ width: `${progressPercent}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Action Buttons */}
+                    <div className="bg-gray-50 dark:bg-gray-700/50 px-6 py-3 flex items-center justify-between">
+                      <button
+                        onClick={() => onSelect(test)}
+                        className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg text-sm hover:bg-indigo-700 transition-colors"
+                      >
+                        {savedCount > 0 ? "Continue" : "Start"}
+                      </button>
+                      {savedCount > 0 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteProgress(test.id);
+                          }}
+                          className="p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+                          aria-label="Delete progress"
+                        >
+                          <IconTrash className="h-5 w-5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -1226,9 +1278,10 @@
               className={`fixed md:sticky top-16 md:top-20 z-40 md:z-10
                            h-[calc(100%-4rem)] md:h-auto
                            w-72 md:w-64 
+                           left-0
                            transition-transform transform ${
                              isSidebarOpen
-                               ? "translate-x-0"
+                               ? "translate-x-0 left-4"
                                : "-translate-x-full"
                            } md:translate-x-0
                            `}
@@ -1646,661 +1699,1345 @@
         );
       }
 
-      // --- Admin View ---
-      function AdminView({
-        dataBasePath,
-        settingsBasePath,
-        isAuthReady,
-        onLogout,
-      }) {
-        const [tests, setTests] = useState([]);
-        const [questions, setQuestions] = useState([]);
-        const [selectedTest, setSelectedTest] = useState(null);
-        const [loading, setLoading] = useState({
-          tests: true,
-          questions: false,
-        });
-        const [error, setError] = useState(null);
-        const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+      
 
-        const [isEditorOpen, setIsEditorOpen] = useState(false);
-        const [editingQuestion, setEditingQuestion] = useState(null);
+            // --- Admin View ---
 
-        // Modal states
-        const [isDeleteQuestionModalOpen, setIsDeleteQuestionModalOpen] =
-          useState(false);
-        const [deletingQuestionId, setDeletingQuestionId] = useState(null);
-        const [isDeleteTestModalOpen, setIsDeleteTestModalOpen] =
-          useState(false);
-        const [deletingTest, setDeletingTest] = useState(null);
+            function AdminView({
 
-        const [isJsonExportModalOpen, setIsJsonExportModalOpen] =
-          useState(false);
-        const [isJsonImportModalOpen, setIsJsonImportModalOpen] =
-          useState(false);
-        const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
-        const [parsedJsonToImport, setParsedJsonToImport] = useState(null);
-
-        const testsCol = useMemo(
-          () => collection(db, dataBasePath, "tests"),
-          [dataBasePath]
-        );
-
-        const updateTestQuestionCount = async (testId) => {
-          try {
-            const questionsColRef = collection(
-              db,
               dataBasePath,
-              "tests",
-              testId,
-              "questions"
-            );
-            const snapshot = await getDocs(questionsColRef);
-            const count = snapshot.size;
 
-            const testDocRef = doc(db, dataBasePath, "tests", testId);
-            await updateDoc(testDocRef, {
-              questionCount: count,
-              updatedAt: serverTimestamp(),
-            });
-          } catch (err) {
-            console.error("Error updating question count:", err);
-            // Don't block UI, just log the error
-          }
-        };
+              settingsBasePath,
 
-        // --- Fetch Admin Tests ---
-        useEffect(() => {
-          if (!isAuthReady) return;
-          setLoading((prev) => ({ ...prev, tests: true }));
+              isAuthReady,
 
-          const unsub = onSnapshot(
-            query(testsCol, orderBy("order", "asc")),
-            async (snapshot) => {
-              const cats = [];
-              let needsMigration = false;
-              let maxOrder = -1;
+              onLogout,
 
-              snapshot.forEach((doc) => {
-                const data = doc.data();
-                if (data.order === undefined) {
-                  needsMigration = true;
-                } else {
-                  maxOrder = Math.max(maxOrder, data.order);
-                }
-                cats.push({ id: doc.id, ...data });
+            }) {
+
+              const [tests, setTests] = useState([]);
+
+              const [questions, setQuestions] = useState([]);
+
+              const [selectedTest, setSelectedTest] = useState(null);
+
+              const [loading, setLoading] = useState({
+
+                tests: true,
+
+                questions: false,
+
               });
 
-              if (needsMigration) {
-                console.log("Running one-time order migration for tests...");
+              const [error, setError] = useState(null);
+
+              const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+      
+
+              const [isEditorOpen, setIsEditorOpen] = useState(false);
+
+              const [editingQuestion, setEditingQuestion] = useState(null);
+
+      
+
+              // Modal states
+
+              const [isDeleteQuestionModalOpen, setIsDeleteQuestionModalOpen] =
+
+                useState(false);
+
+              const [deletingQuestionId, setDeletingQuestionId] = useState(null);
+
+              const [isDeleteTestModalOpen, setIsDeleteTestModalOpen] =
+
+                useState(false);
+
+              const [deletingTest, setDeletingTest] = useState(null);
+
+      
+
+              const [isJsonExportModalOpen, setIsJsonExportModalOpen] =
+
+                useState(false);
+
+              const [isJsonImportModalOpen, setIsJsonImportModalOpen] =
+
+                useState(false);
+
+              const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
+
+              const [parsedJsonToImport, setParsedJsonToImport] = useState(null);
+
+      
+
+              const testsCol = useMemo(
+
+                () => collection(db, dataBasePath, "tests"),
+
+                [dataBasePath]
+
+              );
+
+      
+
+              const updateTestQuestionCount = async (testId) => {
+
                 try {
-                  const batch = writeBatch(db);
-                  // We need to get *all* tests, not just the ordered ones, for a clean migration
-                  const allTestsSnap = await getDocs(testsCol);
-                  const allTests = [];
-                  allTestsSnap.forEach((doc) =>
-                    allTests.push({ id: doc.id, ...doc.data() })
+
+                  const questionsColRef = collection(
+
+                    db,
+
+                    dataBasePath,
+
+                    "tests",
+
+                    testId,
+
+                    "questions"
+
                   );
 
-                  // Sort by existing order, putting undefined ones at the end
-                  allTests.sort((a, b) => {
-                    if (a.order === undefined && b.order === undefined)
-                      return 0;
-                    if (a.order === undefined) return 1;
-                    if (b.order === undefined) return -1;
-                    return a.order - b.order;
+                  const snapshot = await getDocs(questionsColRef);
+
+                  const count = snapshot.size;
+
+      
+
+                  const testDocRef = doc(db, dataBasePath, "tests", testId);
+
+                  await updateDoc(testDocRef, {
+
+                    questionCount: count,
+
+                    updatedAt: serverTimestamp(),
+
                   });
 
-                  allTests.forEach((test, index) => {
+                } catch (err) {
+
+                  console.error("Error updating question count:", err);
+
+                  // Don't block UI, just log the error
+
+                }
+
+              };
+
+      
+
+              // --- Fetch Admin Tests ---
+
+              useEffect(() => {
+
+                if (!isAuthReady) return;
+
+                setLoading((prev) => ({ ...prev, tests: true }));
+
+      
+
+                const unsub = onSnapshot(
+
+                  query(testsCol, orderBy("order", "asc")),
+
+                  async (snapshot) => {
+
+                    const cats = [];
+
+                    let needsMigration = false;
+
+                    let maxOrder = -1;
+
+      
+
+                    snapshot.forEach((doc) => {
+
+                      const data = doc.data();
+
+                      if (data.order === undefined) {
+
+                        needsMigration = true;
+
+                      } else {
+
+                        maxOrder = Math.max(maxOrder, data.order);
+
+                      }
+
+                      cats.push({ id: doc.id, ...data });
+
+                    });
+
+      
+
+                    if (needsMigration) {
+
+                      console.log("Running one-time order migration for tests...");
+
+                      try {
+
+                        const batch = writeBatch(db);
+
+                        // We need to get *all* tests, not just the ordered ones, for a clean migration
+
+                        const allTestsSnap = await getDocs(testsCol);
+
+                        const allTests = [];
+
+                        allTestsSnap.forEach((doc) =>
+
+                          allTests.push({ id: doc.id, ...doc.data() })
+
+                        );
+
+      
+
+                        // Sort by existing order, putting undefined ones at the end
+
+                        allTests.sort((a, b) => {
+
+                          if (a.order === undefined && b.order === undefined)
+
+                            return 0;
+
+                          if (a.order === undefined) return 1;
+
+                          if (b.order === undefined) return -1;
+
+                          return a.order - b.order;
+
+                        });
+
+      
+
+                        allTests.forEach((test, index) => {
+
+                          const testRef = doc(db, testsCol.path, test.id);
+
+                          batch.update(testRef, { order: index });
+
+                        });
+
+      
+
+                        await batch.commit();
+
+                        console.log("Migration complete. Snapshot will refire.");
+
+                        // Don't setLoading or setTests; let the snapshot refire
+
+                      } catch (migrateError) {
+
+                        console.error("Failed to migrate test order:", migrateError);
+
+                        setError("Failed to update test order. Please refresh.");
+
+                        setTests(cats); // Set with potentially wrong order
+
+                        setLoading((prev) => ({ ...prev, tests: false }));
+
+                      }
+
+                    } else {
+
+                      setTests(cats);
+
+                      setLoading((prev) => ({ ...prev, tests: false }));
+
+                    }
+
+                  },
+
+                  (err) => {
+
+                    // This handles the case where the 'order' field doesn't exist on *any* document,
+
+                    // or the collection is empty.
+
+                    if (
+
+                      err.code === "failed-precondition" ||
+
+                      err.code === "invalid-argument"
+
+                    ) {
+
+                      console.log(
+
+                        "Attempting to fetch without order to run migration..."
+
+                      );
+
+                      const unsubFallback = onSnapshot(
+
+                        testsCol,
+
+                        async (fallbackSnapshot) => {
+
+                          const cats = [];
+
+                          fallbackSnapshot.forEach((doc) =>
+
+                            cats.push({ id: doc.id, ...doc.data() })
+
+                          );
+
+      
+
+                          if (cats.length > 0) {
+
+                            console.log("Running initial order migration...");
+
+                            try {
+
+                              const batch = writeBatch(db);
+
+                              cats.forEach((test, index) => {
+
+                                const testRef = doc(db, testsCol.path, test.id);
+
+                                batch.update(testRef, {
+
+                                  order: index,
+
+                                  questionCount: 0,
+
+                                }); // Add questionCount
+
+                              });
+
+                              await batch.commit();
+
+                              console.log(
+
+                                "Initial migration complete. Snapshot will refire."
+
+                              );
+
+                              // Let snapshot refire
+
+                            } catch (migrateError) {
+
+                              console.error(
+
+                                "Failed to run initial migration:",
+
+                                migrateError
+
+                              );
+
+                              setError(
+
+                                "Failed to initialize test order. Please refresh."
+
+                              );
+
+                              setTests(cats); // Show unordered
+
+                            }
+
+                          } else {
+
+                            setTests([]); // No tests, nothing to migrate
+
+                          }
+
+                          setLoading((prev) => ({ ...prev, tests: false }));
+
+                        }
+
+                      );
+
+                      return () => unsubFallback();
+
+                    } else {
+
+                      console.error("Error fetching tests:", err);
+
+                      setError("Failed to load tests.");
+
+                      setLoading((prev) => ({ ...prev, tests: false }));
+
+                    }
+
+                  }
+
+                );
+
+      
+
+                return () => unsub();
+
+              }, [isAuthReady, testsCol]);
+
+      
+
+              // --- Fetch Admin Questions (when test changes) ---
+
+              useEffect(() => {
+
+                if (!selectedTest) {
+
+                  setQuestions([]);
+
+                  return;
+
+                }
+
+                setLoading((prev) => ({ ...prev, questions: true }));
+
+                const questionsCol = collection(
+
+                  db,
+
+                  dataBasePath,
+
+                  "tests",
+
+                  selectedTest.id,
+
+                  "questions"
+
+                );
+
+                // Order by the 'order' field
+
+                const unsub = onSnapshot(
+
+                  query(questionsCol, orderBy("order", "asc")),
+
+                  (snapshot) => {
+
+                    const newQuestions = [];
+
+                    snapshot.forEach((doc) => {
+
+                      newQuestions.push({ id: doc.id, ...doc.data() });
+
+                    });
+
+                    setQuestions(newQuestions);
+
+                    setLoading((prev) => ({ ...prev, questions: false }));
+
+      
+
+                    // Update question count if it's different
+
+                    if (snapshot.size !== selectedTest.questionCount) {
+
+                      updateTestQuestionCount(selectedTest.id);
+
+                    }
+
+                  },
+
+                  (err) => {
+
+                    console.error("Error fetching questions:", err);
+
+                    setError("Failed to load questions for this test.");
+
+                    setLoading((prev) => ({ ...prev, questions: false }));
+
+                  }
+
+                );
+
+                return () => unsub();
+
+              }, [selectedTest, dataBasePath]);
+
+      
+
+              // --- Admin CRUD Handlers ---
+
+              const handleAddTest = async (name, quizMode) => {
+
+                if (!name.trim()) return;
+
+                try {
+
+                  // Add with order = tests.length to put it at the end
+
+                  await addDoc(testsCol, {
+
+                    name: name.trim(),
+
+                    quizMode: quizMode,
+
+                    order: tests.length,
+
+                    questionCount: 0, // Add new field
+
+                    createdAt: serverTimestamp(),
+
+                  });
+
+                } catch (e) {
+
+                  console.error("Error adding test:", e);
+
+                  setError("Failed to add test.");
+
+                }
+
+              };
+
+      
+
+              // --- Delete Test ---
+
+              const openDeleteTestModal = (test) => {
+
+                setDeletingTest(test);
+
+                setIsDeleteTestModalOpen(true);
+
+              };
+
+      
+
+              const handleDeleteTest = async () => {
+
+                if (!deletingTest) return;
+
+      
+
+                const testId = deletingTest.id;
+
+                const testName = deletingTest.name;
+
+      
+
+                setLoading((prev) => ({ ...prev, tests: true }));
+
+                setIsDeleteTestModalOpen(false);
+
+      
+
+                try {
+
+                  // 1. Delete all subcollection documents (questions)
+
+                  const questionsColRef = collection(
+
+                    db,
+
+                    dataBasePath,
+
+                    "tests",
+
+                    testId,
+
+                    "questions"
+
+                  );
+
+                  const questionsSnapshot = await getDocs(questionsColRef);
+
+                  const deleteBatch = writeBatch(db);
+
+                  questionsSnapshot.forEach((doc) => {
+
+                    deleteBatch.delete(doc.ref);
+
+                  });
+
+                  await deleteBatch.commit();
+
+      
+
+                  // 2. Delete the main test document
+
+                  const testDocRef = doc(db, dataBasePath, "tests", testId);
+
+                  await deleteDoc(testDocRef);
+
+      
+
+                  // 3. Clear selection if the deleted test was selected
+
+                  if (selectedTest && selectedTest.id === testId) {
+
+                    setSelectedTest(null);
+
+                  }
+
+                } catch (e) {
+
+                  console.error("Error deleting test:", e);
+
+                  setError(`Failed to delete test "${testName}".`);
+
+                } finally {
+
+                  setLoading((prev) => ({ ...prev, tests: false }));
+
+                  setDeletingTest(null);
+
+                }
+
+              };
+
+      
+
+              // --- Reorder Tests ---
+
+              const handleReorderTests = async (newTests) => {
+
+                // Set local state immediately for snappy UI
+
+                setTests(newTests);
+
+      
+
+                // Update Firestore in the background
+
+                try {
+
+                  const batch = writeBatch(db);
+
+                  newTests.forEach((test, index) => {
+
                     const testRef = doc(db, testsCol.path, test.id);
+
                     batch.update(testRef, { order: index });
+
                   });
 
                   await batch.commit();
-                  console.log("Migration complete. Snapshot will refire.");
-                  // Don't setLoading or setTests; let the snapshot refire
-                } catch (migrateError) {
-                  console.error("Failed to migrate test order:", migrateError);
-                  setError("Failed to update test order. Please refresh.");
-                  setTests(cats); // Set with potentially wrong order
-                  setLoading((prev) => ({ ...prev, tests: false }));
+
+                } catch (reorderError) {
+
+                  console.error("Failed to save new test order:", reorderError);
+
+                  setError("Failed to save new order. Please refresh.");
+
+                  // Note: The UI is now out of sync with DB. Refresh is the safest option.
+
                 }
-              } else {
-                setTests(cats);
-                setLoading((prev) => ({ ...prev, tests: false }));
-              }
-            },
-            (err) => {
-              // This handles the case where the 'order' field doesn't exist on *any* document,
-              // or the collection is empty.
-              if (
-                err.code === "failed-precondition" ||
-                err.code === "invalid-argument"
-              ) {
-                console.log(
-                  "Attempting to fetch without order to run migration..."
+
+              };
+
+      
+
+              const handleToggleQuizMode = async (test, newQuizMode) => {
+
+                try {
+
+                  const testDoc = doc(db, dataBasePath, "tests", test.id);
+
+                  await updateDoc(testDoc, { quizMode: newQuizMode });
+
+                  // Update local state to match
+
+                  setSelectedTest((prev) => ({ ...prev, quizMode: newQuizMode }));
+
+                } catch (e) {
+
+                  console.error("Error updating quiz mode:", e);
+
+                  setError("Failed to update quiz mode.");
+
+                }
+
+              };
+
+      
+
+              const handleSaveQuestion = async (questionData) => {
+
+                if (!selectedTest) return;
+
+                const questionsCol = collection(
+
+                  db,
+
+                  dataBasePath,
+
+                  "tests",
+
+                  selectedTest.id,
+
+                  "questions"
+
                 );
-                const unsubFallback = onSnapshot(
-                  testsCol,
-                  async (fallbackSnapshot) => {
-                    const cats = [];
-                    fallbackSnapshot.forEach((doc) =>
-                      cats.push({ id: doc.id, ...doc.data() })
+
+      
+
+                // This is the data from the modal, without 'order'
+
+                if (questionData.type === "mc") {
+
+                  questionData.options = questionData.options.filter(
+
+                    (opt) => opt.trim() !== ""
+
+                  );
+
+                }
+
+                if (!questionData.imageUrl) {
+
+                  questionData.imageUrl = "";
+
+                }
+
+      
+
+                try {
+
+                  if (editingQuestion) {
+
+                    const questionDoc = doc(
+
+                      db,
+
+                      dataBasePath,
+
+                      "tests",
+
+                      selectedTest.id,
+
+                      "questions",
+
+                      editingQuestion.id
+
                     );
 
-                    if (cats.length > 0) {
-                      console.log("Running initial order migration...");
-                      try {
-                        const batch = writeBatch(db);
-                        cats.forEach((test, index) => {
-                          const testRef = doc(db, testsCol.path, test.id);
-                          batch.update(testRef, {
-                            order: index,
-                            questionCount: 0,
-                          }); // Add questionCount
-                        });
-                        await batch.commit();
-                        console.log(
-                          "Initial migration complete. Snapshot will refire."
-                        );
-                        // Let snapshot refire
-                      } catch (migrateError) {
-                        console.error(
-                          "Failed to run initial migration:",
-                          migrateError
-                        );
-                        setError(
-                          "Failed to initialize test order. Please refresh."
-                        );
-                        setTests(cats); // Show unordered
-                      }
-                    } else {
-                      setTests([]); // No tests, nothing to migrate
-                    }
-                    setLoading((prev) => ({ ...prev, tests: false }));
+                    // Preserve existing order when editing
+
+                    questionData.order =
+
+                      editingQuestion.order !== undefined
+
+                        ? editingQuestion.order
+
+                        : questions.length;
+
+                    await setDoc(questionDoc, questionData);
+
+                  } else {
+
+                    // Add new, set order to the end
+
+                    questionData.order = questions.length;
+
+                    await addDoc(questionsCol, questionData);
+
                   }
-                );
-                return () => unsubFallback();
-              } else {
-                console.error("Error fetching tests:", err);
-                setError("Failed to load tests.");
-                setLoading((prev) => ({ ...prev, tests: false }));
-              }
-            }
-          );
 
-          return () => unsub();
-        }, [isAuthReady, testsCol]);
+                  setIsEditorOpen(false);
 
-        // --- Fetch Admin Questions (when test changes) ---
-        useEffect(() => {
-          if (!selectedTest) {
-            setQuestions([]);
-            return;
-          }
-          setLoading((prev) => ({ ...prev, questions: true }));
-          const questionsCol = collection(
-            db,
-            dataBasePath,
-            "tests",
-            selectedTest.id,
-            "questions"
-          );
-          // Order by the 'order' field
-          const unsub = onSnapshot(
-            query(questionsCol, orderBy("order", "asc")),
-            (snapshot) => {
-              const newQuestions = [];
-              snapshot.forEach((doc) => {
-                newQuestions.push({ id: doc.id, ...doc.data() });
-              });
-              setQuestions(newQuestions);
-              setLoading((prev) => ({ ...prev, questions: false }));
+                  setEditingQuestion(null);
 
-              // Update question count if it's different
-              if (snapshot.size !== selectedTest.questionCount) {
-                updateTestQuestionCount(selectedTest.id);
-              }
-            },
-            (err) => {
-              console.error("Error fetching questions:", err);
-              setError("Failed to load questions for this test.");
-              setLoading((prev) => ({ ...prev, questions: false }));
-            }
-          );
-          return () => unsub();
-        }, [selectedTest, dataBasePath]);
+                  // await updateTestQuestionCount(selectedTest.id); // Let snapshot listener handle this
 
-        // --- Admin CRUD Handlers ---
-        const handleAddTest = async (name, quizMode) => {
-          if (!name.trim()) return;
-          try {
-            // Add with order = tests.length to put it at the end
-            await addDoc(testsCol, {
-              name: name.trim(),
-              quizMode: quizMode,
-              order: tests.length,
-              questionCount: 0, // Add new field
-              createdAt: serverTimestamp(),
-            });
-          } catch (e) {
-            console.error("Error adding test:", e);
-            setError("Failed to add test.");
-          }
-        };
+                } catch (e) {
 
-        // --- Delete Test ---
-        const openDeleteTestModal = (test) => {
-          setDeletingTest(test);
-          setIsDeleteTestModalOpen(true);
-        };
+                  console.error("Error saving question:", e);
 
-        const handleDeleteTest = async () => {
-          if (!deletingTest) return;
+                  setError("Failed to save question.");
 
-          const testId = deletingTest.id;
-          const testName = deletingTest.name;
+                }
 
-          setLoading((prev) => ({ ...prev, tests: true }));
-          setIsDeleteTestModalOpen(false);
+              };
 
-          try {
-            // 1. Delete all subcollection documents (questions)
-            const questionsColRef = collection(
-              db,
-              dataBasePath,
-              "tests",
-              testId,
-              "questions"
-            );
-            const questionsSnapshot = await getDocs(questionsColRef);
-            const deleteBatch = writeBatch(db);
-            questionsSnapshot.forEach((doc) => {
-              deleteBatch.delete(doc.ref);
-            });
-            await deleteBatch.commit();
+      
 
-            // 2. Delete the main test document
-            const testDocRef = doc(db, dataBasePath, "tests", testId);
-            await deleteDoc(testDocRef);
+              const openDeleteQuestionModal = (id) => {
 
-            // 3. Clear selection if the deleted test was selected
-            if (selectedTest && selectedTest.id === testId) {
-              setSelectedTest(null);
-            }
-          } catch (e) {
-            console.error("Error deleting test:", e);
-            setError(`Failed to delete test "${testName}".`);
-          } finally {
-            setLoading((prev) => ({ ...prev, tests: false }));
-            setDeletingTest(null);
-          }
-        };
+                setDeletingQuestionId(id);
 
-        // --- Reorder Tests ---
-        const handleReorderTests = async (newTests) => {
-          // Set local state immediately for snappy UI
-          setTests(newTests);
+                setIsDeleteQuestionModalOpen(true);
 
-          // Update Firestore in the background
-          try {
-            const batch = writeBatch(db);
-            newTests.forEach((test, index) => {
-              const testRef = doc(db, testsCol.path, test.id);
-              batch.update(testRef, { order: index });
-            });
-            await batch.commit();
-          } catch (reorderError) {
-            console.error("Failed to save new test order:", reorderError);
-            setError("Failed to save new order. Please refresh.");
-            // Note: The UI is now out of sync with DB. Refresh is the safest option.
-          }
-        };
+              };
 
-        const handleToggleQuizMode = async (test, newQuizMode) => {
-          try {
-            const testDoc = doc(db, dataBasePath, "tests", test.id);
-            await updateDoc(testDoc, { quizMode: newQuizMode });
-            // Update local state to match
-            setSelectedTest((prev) => ({ ...prev, quizMode: newQuizMode }));
-          } catch (e) {
-            console.error("Error updating quiz mode:", e);
-            setError("Failed to update quiz mode.");
-          }
-        };
+      
 
-        const handleSaveQuestion = async (questionData) => {
-          if (!selectedTest) return;
-          const questionsCol = collection(
-            db,
-            dataBasePath,
-            "tests",
-            selectedTest.id,
-            "questions"
-          );
+              const handleDeleteQuestion = async () => {
 
-          // This is the data from the modal, without 'order'
-          if (questionData.type === "mc") {
-            questionData.options = questionData.options.filter(
-              (opt) => opt.trim() !== ""
-            );
-          }
-          if (!questionData.imageUrl) {
-            questionData.imageUrl = "";
-          }
+                if (!selectedTest || !deletingQuestionId) return;
 
-          try {
-            if (editingQuestion) {
-              const questionDoc = doc(
-                db,
-                dataBasePath,
-                "tests",
-                selectedTest.id,
-                "questions",
-                editingQuestion.id
-              );
-              // Preserve existing order when editing
-              questionData.order =
-                editingQuestion.order !== undefined
-                  ? editingQuestion.order
-                  : questions.length;
-              await setDoc(questionDoc, questionData);
-            } else {
-              // Add new, set order to the end
-              questionData.order = questions.length;
-              await addDoc(questionsCol, questionData);
-            }
-            setIsEditorOpen(false);
-            setEditingQuestion(null);
-            // await updateTestQuestionCount(selectedTest.id); // Let snapshot listener handle this
-          } catch (e) {
-            console.error("Error saving question:", e);
-            setError("Failed to save question.");
-          }
-        };
+                try {
 
-        const openDeleteQuestionModal = (id) => {
-          setDeletingQuestionId(id);
-          setIsDeleteQuestionModalOpen(true);
-        };
+                  const questionDoc = doc(
 
-        const handleDeleteQuestion = async () => {
-          if (!selectedTest || !deletingQuestionId) return;
-          try {
-            const questionDoc = doc(
-              db,
-              dataBasePath,
-              "tests",
-              selectedTest.id,
-              "questions",
-              deletingQuestionId
-            );
-            await deleteDoc(questionDoc);
-            setIsDeleteQuestionModalOpen(false);
-            setDeletingQuestionId(null);
-            // await updateTestQuestionCount(selectedTest.id); // Let snapshot listener handle this
-          } catch (e) {
-            console.error("Error deleting question:", e);
-            setError("Failed to delete question.");
-          }
-        };
+                    db,
 
-        const handleJsonImport = (jsonString) => {
-          if (!selectedTest) {
-            setError("Please select a test first.");
-            return;
-          }
-          let importedQuestions;
-          try {
-            // Clean the string: remove leading/trailing whitespace and non-breaking spaces (\u00A0)
-            const cleanedJsonString = jsonString.replace(/\u00A0/g, " ").trim();
-            importedQuestions = JSON.parse(cleanedJsonString);
-            if (!Array.isArray(importedQuestions))
-              throw new Error("JSON must be an array.");
+                    dataBasePath,
 
-            // All validation passed. Store for confirmation.
-            setParsedJsonToImport(importedQuestions);
-            setIsImportConfirmOpen(true); // Open confirmation modal
-            setIsJsonImportModalOpen(false); // Close import modal
-            setError(null);
-          } catch (e) {
-            setError(`Invalid JSON: ${e.message}`);
-            setParsedJsonToImport(null);
-          }
-        };
+                    "tests",
 
-        const executeJsonImport = async () => {
-          if (!parsedJsonToImport || !selectedTest) return;
+                    selectedTest.id,
 
-          setLoading((prev) => ({ ...prev, questions: true }));
-          setIsImportConfirmOpen(false);
+                    "questions",
 
-          const questionsColRef = collection(
-            db,
-            dataBasePath,
-            "tests",
-            selectedTest.id,
-            "questions"
-          );
+                    deletingQuestionId
 
-          try {
-            // 1. Delete all existing questions in a batch
-            const existingQuery = await getDocs(questionsColRef);
-            const deleteBatch = writeBatch(db);
-            existingQuery.forEach((doc) => {
-              deleteBatch.delete(doc.ref);
-            });
-            await deleteBatch.commit();
+                  );
 
-            // 2. Add all new questions in a batch
-            const addBatch = writeBatch(db);
-            parsedJsonToImport.forEach((q, index) => {
-              // Added index
-              const newQuestionRef = doc(questionsColRef); // Create new doc ref
+                  await deleteDoc(questionDoc);
 
-              // Determine type if not provided
-              let questionType = q.type;
-              if (!questionType) {
-                // Check if options exists, is an array, and is not empty
-                questionType =
-                  q.options && Array.isArray(q.options) && q.options.length > 0
-                    ? "mc"
-                    : "fill";
-              }
+                  setIsDeleteQuestionModalOpen(false);
 
-              addBatch.set(newQuestionRef, {
-                question: q.question || "",
-                answer: q.answer || "",
-                type: questionType,
-                options:
-                  questionType === "mc" && Array.isArray(q.options)
-                    ? q.options
-                    : [],
-                imageUrl: q.imageUrl || "",
-                order: index, // <-- Add order field
-              });
-            });
-            await addBatch.commit();
+                  setDeletingQuestionId(null);
 
-            // 3. Update the question count on the test
-            await updateTestQuestionCount(selectedTest.id);
-          } catch (e) {
-            console.error("Error during batch import:", e);
-            setError(
-              "Failed to import questions. Data may be in an inconsistent state."
-            );
-          } finally {
-            setLoading((prev) => ({ ...prev, questions: false }));
-            setParsedJsonToImport(null); // Clear the stored JSON
-          }
-        };
+                  // await updateTestQuestionCount(selectedTest.id); // Let snapshot listener handle this
 
-        const openEditorForNew = () => {
-          setEditingQuestion(null);
-          setIsEditorOpen(true);
-        };
-        const openEditorForEdit = (question) => {
-          setEditingQuestion(question);
-          setIsEditorOpen(true);
-        };
+                } catch (e) {
 
-        const exportedJson = useMemo(() => {
-          const formattedQuestions = questions.map(({ id, ...q }) => ({
-            question: q.question,
-            answer: q.answer,
-            type: q.type,
-            options: q.options,
-            imageUrl: q.imageUrl || "",
-            order: q.order,
-          }));
-          return JSON.stringify(formattedQuestions, null, 2);
-        }, [questions]);
+                  console.error("Error deleting question:", e);
 
-        if (!isAuthReady) {
-          return (
-            <div className="p-8 text-center text-gray-500">
-              Authenticating admin...
-            </div>
-          );
-        }
+                  setError("Failed to delete question.");
 
-        return (
-          <div className="relative flex flex-col md:flex-row bg-gray-100 dark:bg-gray-900">
-            {/* Mobile Menu Button */}
-            <button
-              onClick={() => setIsSidebarOpen(true)}
-              className="md:hidden fixed top-20 left-4 z-20 p-2 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg shadow"
-              aria-label="Open menu"
-            >
-              <IconMenu className="h-6 w-6 text-gray-800 dark:text-gray-200" />
-            </button>
+                }
 
-            {/* Sidebar */}
-            {/* Mobile overlay */}
-            {isSidebarOpen && (
-              <div
-                className="md:hidden fixed inset-0 bg-black/50 z-30"
-                onClick={() => setIsSidebarOpen(false)}
-              ></div>
-            )}
-            {/* Sidebar content */}
-            <div
-              className={`fixed md:sticky top-16 z-40 md:z-10
-                           h-[calc(100vh-4rem)] md:h-[calc(100vh-4rem)]
-                           w-72 
-                           transition-transform transform ${
-                             isSidebarOpen
-                               ? "translate-x-0"
-                               : "-translate-x-full"
-                           } md:translate-x-0
-                           `}
-            >
-              <AdminSidebar
-                tests={tests}
-                selectedTest={selectedTest}
-                onSelectTest={(test) => {
-                  setSelectedTest(test);
-                  setIsSidebarOpen(false); // Close sidebar on mobile select
-                }}
-                onAddTest={handleAddTest}
-                onDeleteTest={openDeleteTestModal}
-                onReorderTests={handleReorderTests} // Pass reorder handler
-                loading={loading.tests}
-                authReady={isAuthReady}
-                onLogout={onLogout}
-                settingsBasePath={settingsBasePath}
-              />
-            </div>
+              };
 
-            {/* Main Content */}
-            <main className="flex-1 overflow-y-auto p-4 md:p-8">
-              {error && (
-                <div
-                  className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-4 dark:bg-red-900 dark:border-red-700 dark:text-red-300"
-                  role="alert"
-                >
-                  <span className="block sm:inline">{error}</span>
-                  <button
-                    className="absolute top-0 bottom-0 right-0 px-4 py-3"
-                    onClick={() => setError(null)}
-                  >
-                    <IconX className="h-6 w-6 text-red-500 dark:text-red-400" />
-                  </button>
-                </div>
-              )}
-              {selectedTest ? (
-                <AdminTestManager
-                  test={selectedTest}
-                  questions={questions}
-                  loading={loading.questions}
-                  onAddNew={openEditorForNew}
-                  onEdit={openEditorForEdit}
-                  onDelete={openDeleteQuestionModal}
-                  onExportJson={() => setIsJsonExportModalOpen(true)}
-                  onImportJson={() => setIsJsonImportModalOpen(true)}
-                  onToggleQuizMode={handleToggleQuizMode}
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full min-h-[300px]">
-                  <p className="text-xl text-center text-gray-500 dark:text-gray-400">
-                    {loading.tests
-                      ? "Loading tests..."
-                      : "Select a test to start, or add a new one."}
-                  </p>
-                </div>
-              )}
-            </main>
-            {isEditorOpen && (
-              <AdminQuestionEditorModal
-                question={editingQuestion}
-                onClose={() => setIsEditorOpen(false)}
-                onSave={handleSaveQuestion}
-              />
-            )}
-            {isDeleteQuestionModalOpen && (
-              <AdminConfirmationModal
-                title="Delete Question"
-                message="Are you sure you want to delete this question? This action cannot be undone."
-                onConfirm={handleDeleteQuestion}
-                onCancel={() => setIsDeleteQuestionModalOpen(false)}
-              />
-            )}
-            {isDeleteTestModalOpen && (
-              <AdminConfirmationModal
-                title="Delete Test?"
-                message={`Are you sure you want to delete the test "${deletingTest?.name}"? This will also delete ALL associated questions. This action cannot be undone.`}
-                onConfirm={handleDeleteTest}
-                onCancel={() => setIsDeleteTestModalOpen(false)}
-              />
-            )}
-            {isJsonExportModalOpen && (
-              <AdminJsonExportModal
-                jsonData={exportedJson}
-                onClose={() => setIsJsonExportModalOpen(false)}
-              />
-            )}
-            {isJsonImportModalOpen && (
-              <AdminJsonImportModal
-                onClose={() => setIsJsonImportModalOpen(false)}
-                onImport={handleJsonImport}
-              />
-            )}
-            {isImportConfirmOpen && (
-              <AdminConfirmationModal
-                title="Overwrite Questions?"
-                message={`Are you sure you want to OVERWRITE all ${questions.length} existing questions in "${selectedTest.name}" with ${parsedJsonToImport.length} new ones? This action cannot be undone.`}
-                onConfirm={executeJsonImport}
-                onCancel={() => {
-                  setIsImportConfirmOpen(false);
+      
+
+              const handleJsonImport = (jsonString) => {
+
+                if (!selectedTest) {
+
+                  setError("Please select a test first.");
+
+                  return;
+
+                }
+
+                let importedQuestions;
+
+                try {
+
+                  // Clean the string: remove leading/trailing whitespace and non-breaking spaces (\u00A0)
+
+                  const cleanedJsonString = jsonString.replace(/\u00A0/g, " ").trim();
+
+                  importedQuestions = JSON.parse(cleanedJsonString);
+
+                  if (!Array.isArray(importedQuestions))
+
+                    throw new Error("JSON must be an array.");
+
+      
+
+                  // All validation passed. Store for confirmation.
+
+                  setParsedJsonToImport(importedQuestions);
+
+                  setIsImportConfirmOpen(true); // Open confirmation modal
+
+                  setIsJsonImportModalOpen(false); // Close import modal
+
+                  setError(null);
+
+                } catch (e) {
+
+                  setError(`Invalid JSON: ${e.message}`);
+
                   setParsedJsonToImport(null);
-                }}
-                confirmText="Overwrite & Import"
-                confirmColor="bg-blue-600 hover:bg-blue-700"
-              />
-            )}
-          </div>
-        );
-      }
+
+                }
+
+              };
+
+      
+
+              const executeJsonImport = async () => {
+
+                if (!parsedJsonToImport || !selectedTest) return;
+
+      
+
+                setLoading((prev) => ({ ...prev, questions: true }));
+
+                setIsImportConfirmOpen(false);
+
+      
+
+                const questionsColRef = collection(
+
+                  db,
+
+                  dataBasePath,
+
+                  "tests",
+
+                  selectedTest.id,
+
+                  "questions"
+
+                );
+
+      
+
+                try {
+
+                  // 1. Delete all existing questions in a batch
+
+                  const existingQuery = await getDocs(questionsColRef);
+
+                  const deleteBatch = writeBatch(db);
+
+                  existingQuery.forEach((doc) => {
+
+                    deleteBatch.delete(doc.ref);
+
+                  });
+
+                  await deleteBatch.commit();
+
+      
+
+                  // 2. Add all new questions in a batch
+
+                  const addBatch = writeBatch(db);
+
+                  parsedJsonToImport.forEach((q, index) => {
+
+                    // Added index
+
+                    const newQuestionRef = doc(questionsColRef); // Create new doc ref
+
+      
+
+                    // Determine type if not provided
+
+                    let questionType = q.type;
+
+                    if (!questionType) {
+
+                      // Check if options exists, is an array, and is not empty
+
+                      questionType =
+
+                        q.options && Array.isArray(q.options) && q.options.length > 0
+
+                          ? "mc"
+
+                          : "fill";
+
+                    }
+
+      
+
+                    addBatch.set(newQuestionRef, {
+
+                      question: q.question || "",
+
+                      answer: q.answer || "",
+
+                      type: questionType,
+
+                      options:
+
+                        questionType === "mc" && Array.isArray(q.options)
+
+                          ? q.options
+
+                          : [],
+
+                      imageUrl: q.imageUrl || "",
+
+                      order: index, // <-- Add order field
+
+                    });
+
+                  });
+
+                  await addBatch.commit();
+
+      
+
+                  // 3. Update the question count on the test
+
+                  await updateTestQuestionCount(selectedTest.id);
+
+                } catch (e) {
+
+                  console.error("Error during batch import:", e);
+
+                  setError(
+
+                    "Failed to import questions. Data may be in an inconsistent state."
+
+                  );
+
+                } finally {
+
+                  setLoading((prev) => ({ ...prev, questions: false }));
+
+                  setParsedJsonToImport(null); // Clear the stored JSON
+
+                }
+
+              };
+
+      
+
+              const openEditorForNew = () => {
+
+                setEditingQuestion(null);
+
+                setIsEditorOpen(true);
+
+              };
+
+              const openEditorForEdit = (question) => {
+
+                setEditingQuestion(question);
+
+                setIsEditorOpen(true);
+
+              };
+
+      
+
+              const exportedJson = useMemo(() => {
+
+                const formattedQuestions = questions.map(({ id, ...q }) => ({
+
+                  question: q.question,
+
+                  answer: q.answer,
+
+                  type: q.type,
+
+                  options: q.options,
+
+                  imageUrl: q.imageUrl || "",
+
+                  order: q.order,
+
+                }));
+
+                return JSON.stringify(formattedQuestions, null, 2);
+
+              }, [questions]);
+
+      
+
+              if (!isAuthReady) {
+
+                return (
+
+                  <div className="p-8 text-center text-gray-500">
+
+                    Authenticating admin...
+
+                  </div>
+
+                );
+
+              }
+
+      
+
+              return (
+
+                <div className="flex h-[calc(100vh-4rem)] bg-gray-100 dark:bg-gray-900">
+
+                  {/* --- Sidebar --- */}
+
+                  {/* Mobile overlay */}
+
+                  <div
+
+                    className={`fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity duration-300 ${
+
+                      isSidebarOpen
+
+                        ? "opacity-100"
+
+                        : "opacity-0 pointer-events-none"
+
+                    }`}
+
+                    onClick={() => setIsSidebarOpen(false)}
+
+                  ></div>
+
+                  {/* Sidebar content */}
+
+                  <div
+
+                    className={`fixed inset-y-0 left-0 z-40 w-72 bg-white dark:bg-gray-800 border-r dark:border-gray-700
+
+                               md:sticky md:top-0 md:h-auto
+
+                               transition-transform duration-300 ease-in-out
+
+                               ${
+
+                                 isSidebarOpen
+
+                                   ? "translate-x-0"
+
+                                   : "-translate-x-full"
+
+                               } md:translate-x-0`}
+
+                  >
+
+                    <AdminSidebar
+
+                      tests={tests}
+
+                      selectedTest={selectedTest}
+
+                      onSelectTest={(test) => {
+
+                        setSelectedTest(test);
+
+                        setIsSidebarOpen(false); // Close sidebar on mobile select
+
+                      }}
+
+                      onAddTest={handleAddTest}
+
+                      onDeleteTest={openDeleteTestModal}
+
+                      onReorderTests={handleReorderTests} // Pass reorder handler
+
+                      loading={loading.tests}
+
+                      authReady={isAuthReady}
+
+                      onLogout={onLogout}
+
+                      settingsBasePath={settingsBasePath}
+
+                    />
+
+                  </div>
+
+      
+
+                  {/* --- Main Content --- */}
+
+                  <main className="flex-1 overflow-y-auto">
+
+                    <div className="p-4 md:p-8">
+
+                      {/* Mobile Header */}
+
+                      <div className="md:hidden flex items-center mb-4">
+
+                        <button
+
+                          onClick={() => setIsSidebarOpen(true)}
+
+                          className="p-2 text-gray-600 dark:text-gray-300"
+
+                          aria-label="Open menu"
+
+                        >
+
+                          <IconMenu className="h-6 w-6" />
+
+                        </button>
+
+                        <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 ml-4 truncate">
+
+                          {selectedTest ? selectedTest.name : "Admin Panel"}
+
+                        </h2>
+
+                      </div>
+
+      
+
+                      {error && (
+
+                        <div
+
+                          className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-4 dark:bg-red-900 dark:border-red-700 dark:text-red-300"
+
+                          role="alert"
+
+                        >
+
+                          <span className="block sm:inline">{error}</span>
+
+                          <button
+
+                            className="absolute top-0 bottom-0 right-0 px-4 py-3"
+
+                            onClick={() => setError(null)}
+
+                          >
+
+                            <IconX className="h-6 w-6 text-red-500 dark:text-red-400" />
+
+                          </button>
+
+                        </div>
+
+                      )}
+
+                      {selectedTest ? (
+
+                        <AdminTestManager
+
+                          test={selectedTest}
+
+                          questions={questions}
+
+                          loading={loading.questions}
+
+                          onAddNew={openEditorForNew}
+
+                          onEdit={openEditorForEdit}
+
+                          onDelete={openDeleteQuestionModal}
+
+                          onExportJson={() => setIsJsonExportModalOpen(true)}
+
+                          onImportJson={() => setIsJsonImportModalOpen(true)}
+
+                          onToggleQuizMode={handleToggleQuizMode}
+
+                        />
+
+                      ) : (
+
+                        <div className="flex items-center justify-center h-full min-h-[300px]">
+
+                          <div className="text-center">
+
+                            <IconChevronLeft className="h-12 w-12 text-gray-400 mx-auto" />
+
+                            <p className="text-xl text-center text-gray-500 dark:text-gray-400 mt-4">
+
+                              {loading.tests
+
+                                ? "Loading tests..."
+
+                                : "Select a test to start, or add a new one."}
+
+                            </p>
+
+                          </div>
+
+                        </div>
+
+                      )}
+
+                    </div>
+
+                  </main>
+
+      
+
+                  {/* --- Modals --- */}
+
+                  {isEditorOpen && (
+
+                    <AdminQuestionEditorModal
+
+                      question={editingQuestion}
+
+                      onClose={() => setIsEditorOpen(false)}
+
+                      onSave={handleSaveQuestion}
+
+                    />
+
+                  )}
+
+                  {isDeleteQuestionModalOpen && (
+
+                    <AdminConfirmationModal
+
+                      title="Delete Question"
+
+                      message="Are you sure you want to delete this question? This action cannot be undone."
+
+                      onConfirm={handleDeleteQuestion}
+
+                      onCancel={() => setIsDeleteQuestionModalOpen(false)}
+
+                    />
+
+                  )}
+
+                  {isDeleteTestModalOpen && (
+
+                    <AdminConfirmationModal
+
+                      title="Delete Test?"
+
+                      message={`Are you sure you want to delete the test "${deletingTest?.name}"? This will also delete ALL associated questions. This action cannot be undone.`}
+
+                      onConfirm={handleDeleteTest}
+
+                      onCancel={() => setIsDeleteTestModalOpen(false)}
+
+                    />
+
+                  )}
+
+                  {isJsonExportModalOpen && (
+
+                    <AdminJsonExportModal
+
+                      jsonData={exportedJson}
+
+                      onClose={() => setIsJsonExportModalOpen(false)}
+
+                    />
+
+                  )}
+
+                  {isJsonImportModalOpen && (
+
+                    <AdminJsonImportModal
+
+                      onClose={() => setIsJsonImportModalOpen(false)}
+
+                      onImport={handleJsonImport}
+
+                    />
+
+                  )}
+
+                  {isImportConfirmOpen && (
+
+                    <AdminConfirmationModal
+
+                      title="Overwrite Questions?"
+
+                      message={`Are you sure you want to OVERWRITE all ${questions.length} existing questions in "${selectedTest.name}" with ${parsedJsonToImport.length} new ones? This action cannot be undone.`}
+
+                      onConfirm={executeJsonImport}
+
+                      onCancel={() => {
+
+                        setIsImportConfirmOpen(false);
+
+                        setParsedJsonToImport(null);
+
+                      }}
+
+                      confirmText="Overwrite & Import"
+
+                      confirmColor="bg-blue-600 hover:bg-blue-700"
+
+                    />
+
+                  )}
+
+                </div>
+
+              );
+
+            }
+
+      
 
       // --- Admin: Sidebar ---
       function AdminSidebar({
@@ -2400,12 +3137,19 @@
           if (draggedId === targetId || !draggedId) return; // Dropped on itself or invalid drag
 
           const newTests = [...tests];
-          const draggedTest = newTests.find((t) => t.id === draggedId);
+          const draggedIndex = newTests.findIndex((t) => t.id === draggedId);
           const targetIndex = newTests.findIndex((t) => t.id === targetId);
 
+          // --- Robustness check ---
+          if (draggedIndex === -1 || targetIndex === -1) {
+            console.error("Drag and drop error: item not found.");
+            setDraggedId(null);
+            setDragOverId(null);
+            return;
+          }
+
           // Remove dragged test from its original position
-          const draggedIndex = newTests.findIndex((t) => t.id === draggedId);
-          newTests.splice(draggedIndex, 1);
+          const [draggedTest] = newTests.splice(draggedIndex, 1);
 
           // Insert it at the target position
           newTests.splice(targetIndex, 0, draggedTest);
@@ -2431,9 +3175,6 @@
 
         const handleTouchMove = (e) => {
           if (!draggedId) return;
-
-          // Prevent page scroll
-          e.preventDefault();
 
           const touch = e.touches[0];
           const element = document.elementFromPoint(
@@ -2908,7 +3649,7 @@
                             <button
                               type="button"
                               onClick={() => removeOption(index)}
-                              className="p-1 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                              className="p-1 text-red-500 hover:text-red-700 disabled:text-gray-400 disabled:cursor-not-allowed dark:text-red-400 dark:hover:text-red-300 dark:disabled:text-gray-500"
                               aria-label="Remove option"
                               disabled={options.length <= 1}
                             >
@@ -3012,24 +3753,21 @@
       // --- Admin: JsonExportModal ---
       function AdminJsonExportModal({ jsonData, onClose }) {
         const [copySuccess, setCopySuccess] = useState("");
-        const copyToClipboard = () => {
-          const textArea = document.createElement("textarea");
-          textArea.value = jsonData;
-          textArea.style.position = "fixed";
-          textArea.style.top = "0";
-          textArea.style.left = "0";
-          document.body.appendChild(textArea);
-          textArea.focus();
-          textArea.select();
-          try {
-            setCopySuccess(
-              document.execCommand("copy") ? "Copied!" : "Failed."
-            );
-          } catch (err) {
-            setCopySuccess("Failed.");
+        const copyToClipboard = async () => {
+          if (!navigator.clipboard) {
+            setCopySuccess("Copy not supported.");
+            setTimeout(() => setCopySuccess(""), 2000);
+            return;
           }
-          document.body.removeChild(textArea);
-          setTimeout(() => setCopySuccess(""), 2000);
+          try {
+            await navigator.clipboard.writeText(jsonData);
+            setCopySuccess("Copied!");
+          } catch (err) {
+            console.error("Failed to copy:", err);
+            setCopySuccess("Failed.");
+          } finally {
+            setTimeout(() => setCopySuccess(""), 2000);
+          }
         };
 
         return (
