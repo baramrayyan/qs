@@ -2692,6 +2692,82 @@
 
       };
 
+      const handleShuffleOptions = async () => {
+        if (!selectedTest || !questions || questions.length === 0) return;
+        if (!confirm("Are you sure you want to shuffle options for all questions? This cannot be undone.")) return;
+
+        setLoading((prev) => ({ ...prev, questions: true }));
+
+        try {
+          const batch = writeBatch(db);
+          const questionsColRef = collection(
+            db,
+            dataBasePath,
+            "tests",
+            selectedTest.id,
+            "questions"
+          );
+
+          questions.forEach((q) => {
+            if (q.type !== "mc" || !q.options || q.options.length < 2) return;
+
+            // Simple shuffle function (Fisher-Yates)
+            const shuffle = (array) => {
+              let currentIndex = array.length, randomIndex;
+              while (currentIndex != 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [
+                  array[randomIndex], array[currentIndex]];
+              }
+              return array;
+            };
+
+            const oldOptions = [...q.options];
+            const newOptions = shuffle([...oldOptions]);
+
+            let newAnswer = q.answer;
+
+            // Attempt to determine correct answer text logic
+            // Check if answer is a direct match in options
+            const answerIsText = oldOptions.includes(q.answer);
+
+            // Check if answer is a letter (A, B, C...)
+            const answerIsLetter = /^[A-Z]$/.test(q.answer);
+
+            if (answerIsText) {
+              // If answer is just the text, it remains valid as long as it's in the set
+              // No change needed to answer field, just options shuffled.
+              // Wait, logic check: if answer is "Apple", and options shuffled, answer is still "Apple". Correct.
+            } else if (answerIsLetter) {
+              // If answer is "A", implies index 0.
+              const oldIndex = q.answer.charCodeAt(0) - 65;
+              if (oldIndex >= 0 && oldIndex < oldOptions.length) {
+                const correctText = oldOptions[oldIndex];
+                const newIndex = newOptions.indexOf(correctText);
+                if (newIndex !== -1) {
+                  newAnswer = String.fromCharCode(65 + newIndex);
+                }
+              }
+            }
+
+            const questionDocRef = doc(questionsColRef, q.id);
+            batch.update(questionDocRef, {
+              options: newOptions,
+              answer: newAnswer
+            });
+          });
+
+          await batch.commit();
+          // Snapshots will update local state automatically
+        } catch (e) {
+          console.error("Error shuffling options:", e);
+          setError("Failed to shuffle options.");
+        } finally {
+          setLoading((prev) => ({ ...prev, questions: false }));
+        }
+      };
+
 
 
       const openEditorForNew = () => {
@@ -2913,7 +2989,7 @@
                   onToggleQuizMode={handleToggleQuizMode}
 
                   onUpdateTest={handleUpdateTest}
-
+                  onShuffleOptions={handleShuffleOptions}
                 />
 
               ) : (
@@ -3393,13 +3469,24 @@
       onImportJson,
       onToggleQuizMode,
       onUpdateTest,
+      onShuffleOptions,
     }) {
       const [isEditModalOpen, setIsEditModalOpen] = useState(false);
       const [isWatermarkModalOpen, setIsWatermarkModalOpen] = useState(false);
-      const [watermarkSettings, setWatermarkSettings] = useState({
-        text: "",
-        imageUrl: "",
+      const [watermarkSettings, setWatermarkSettings] = useState(() => {
+        const saved = localStorage.getItem("qs_watermark_settings");
+        return saved ? JSON.parse(saved) : {
+          text: "",
+          imageUrl: "",
+          position: "bottom-right",
+          opacity: 0.5
+        };
       });
+
+      useEffect(() => {
+        localStorage.setItem("qs_watermark_settings", JSON.stringify(watermarkSettings));
+      }, [watermarkSettings]);
+
       const quizModeEnabled = test.quizMode;
       const isHidden = test.hidden;
 
@@ -3420,13 +3507,21 @@
               }
               .watermark {
                 position: fixed;
-                bottom: 10px;
-                right: 20px;
                 display: flex;
                 flex-direction: column;
-                align-items: flex-end;
                 pointer-events: none;
                 z-index: 1000;
+                opacity: ${watermarkSettings.opacity};
+              }
+              .watermark.bottom-right { bottom: 20px; right: 20px; align-items: flex-end; }
+              .watermark.bottom-left { bottom: 20px; left: 20px; align-items: flex-start; }
+              .watermark.top-right { top: 20px; right: 20px; align-items: flex-end; }
+              .watermark.top-left { top: 20px; left: 20px; align-items: flex-start; }
+              .watermark.center {
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                align-items: center;
               }
               .watermark img {
                 max-height: 60px;
@@ -3551,7 +3646,7 @@
       }).join("")}
             </div>
             ${watermarkSettings.text || watermarkSettings.imageUrl
-          ? `<div class="watermark">
+          ? `<div class="watermark ${watermarkSettings.position}">
                     ${watermarkSettings.imageUrl
             ? `<img src="${watermarkSettings.imageUrl}" alt="Watermark" />`
             : ""
@@ -3650,6 +3745,46 @@
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                     />
                   </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">
+                      Position
+                    </label>
+                    <select
+                      value={watermarkSettings.position}
+                      onChange={(e) =>
+                        setWatermarkSettings({
+                          ...watermarkSettings,
+                          position: e.target.value,
+                        })
+                      }
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    >
+                      <option value="bottom-right">Bottom Right</option>
+                      <option value="bottom-left">Bottom Left</option>
+                      <option value="top-right">Top Right</option>
+                      <option value="top-left">Top Left</option>
+                      <option value="center">Center</option>
+                    </select>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">
+                      Opacity: {Math.round(watermarkSettings.opacity * 100)}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={watermarkSettings.opacity}
+                      onChange={(e) =>
+                        setWatermarkSettings({
+                          ...watermarkSettings,
+                          opacity: parseFloat(e.target.value),
+                        })
+                      }
+                      className="w-full"
+                    />
+                  </div>
                 </div>
                 <div className="bg-gray-50 px-6 py-4 flex justify-end dark:bg-gray-700 rounded-b-lg">
                   <button
@@ -3706,6 +3841,12 @@
               <button onClick={handleDownloadDoc}
                 className="flex items-center bg-green-600 text-white px-3 py-2 rounded-lg shadow-sm font-semibold text-sm hover:bg-green-700 transition-colors">
                 <IconDownload className="h-4 w-4 mr-2" /> Word Doc
+              </button>
+              <button onClick={onShuffleOptions}
+                className="flex items-center bg-yellow-600 text-white px-3 py-2 rounded-lg shadow-sm font-semibold text-sm hover:bg-yellow-700 transition-colors"
+                title="Shuffle Options for All Questions"
+              >
+                <IconRepeat className="h-4 w-4 mr-2" /> Shuffle Options
               </button>
               <button onClick={onAddNew}
                 className="flex items-center bg-indigo-600 text-white px-3 py-2 rounded-lg shadow-sm font-semibold text-sm hover:bg-indigo-700 transition-colors">
